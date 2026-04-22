@@ -1,7 +1,10 @@
-// Nigeria Scam Detector Bot - Joshua Giwa
-const { Telegraf } = require('telegraf');
+// Nigeria Scam Detector Bot - Open Community Version
+// Creator: Joshua Giwa
+// Community: https://t.me/+8JUqlJ-4SBdlZTM0
 
-// Try to load .env locally, but don't fail on Render
+const { Telegraf } = require('telegraf');
+const fs = require('fs');
+
 try {
     require('dotenv').config();
 } catch (err) {
@@ -12,28 +15,16 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 
 if (!BOT_TOKEN) {
     console.error('❌ BOT_TOKEN not found!');
-    console.error('Make sure to add BOT_TOKEN in Environment Variables on Render');
     process.exit(1);
 }
 
 const bot = new Telegraf(BOT_TOKEN);
-const fs = require('fs');
 
-// VIP users database
-let vipUsers = [];
-try {
-    const vipData = fs.readFileSync('vipusers.json', 'utf8');
-    vipUsers = JSON.parse(vipData);
-    console.log(`👑 Loaded ${vipUsers.length} VIP users`);
-} catch (err) {
-    console.log('📝 No VIP users yet');
-}
+// ========== YOUR INFO ==========
+const YOUR_ID = 8447414897; // Joshua's Telegram ID
+const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
 
-function saveVipUsers() {
-    fs.writeFileSync('vipusers.json', JSON.stringify(vipUsers, null, 2));
-}
-
-// Scammers database
+// ========== DATA FILES ==========
 let reportedScammers = [];
 try {
     const data = fs.readFileSync('scammers.json', 'utf8');
@@ -47,14 +38,75 @@ function saveScammers() {
     fs.writeFileSync('scammers.json', JSON.stringify(reportedScammers, null, 2));
 }
 
-// Scam detection
+let tipSubscribers = [];
+try {
+    const tipData = fs.readFileSync('tipsubscribers.json', 'utf8');
+    tipSubscribers = JSON.parse(tipData);
+    console.log(`📰 Loaded ${tipSubscribers.length} tip subscribers`);
+} catch (err) {
+    console.log('📝 No tip subscribers yet');
+}
+
+function saveTipSubscribers() {
+    fs.writeFileSync('tipsubscribers.json', JSON.stringify(tipSubscribers, null, 2));
+}
+
+// Education content
+const defaultScamTypes = `📚 *COMMON SCAMS IN NIGERIA*
+
+*1. Fake Bank Alerts* 🏦
+Wait for money to reflect in your balance, not just SMS.
+
+*2. Employment Scams* 💼
+Legit jobs never ask for payment.
+
+*3. Romance Scams* 💔
+Never send money to someone you haven't met.
+
+*4. Investment Scams* 📈
+If it sounds too good to be true, it is.
+
+*5. Phishing Links* 🔗
+Never click links in suspicious messages.
+
+👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`;
+
+const defaultRedFlags = `🚩 *SCAM RED FLAGS*
+
+URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
+MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
+INFO: "PIN", "OTP", "BVN", "CVV"
+FAKE: "WINNING", "LOTTERY", "PRINCE"
+
+If you see these + asking for money = SCAM
+
+👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`;
+
+const defaultWhatToDo = `🆘 *YOU'VE BEEN SCAMMED*
+
+1. Contact your bank immediately
+2. Save all evidence
+3. Report to EFCC: 08093322644
+4. Report number to this bot: /report
+5. Join our community for support: https://t.me/+8JUqlJ-4SBdlZTM0`;
+
+const dailyTips = [
+    "📚 Never share your OTP with anyone. Banks will NEVER ask for it.",
+    "📚 If someone promises to double your money in 24 hours, RUN.",
+    "📚 Verify urgent requests by CALLING the person back.",
+    "📚 Romance scammers build trust for months before asking for money.",
+    "📚 Legitimate jobs never ask for payment to hire you.",
+    "📚 Always /check any number before sending money.",
+    "📚 Join our community for real-time scam alerts: https://t.me/+8JUqlJ-4SBdlZTM0"
+];
+
+// ========== SCAM DETECTION ==========
 function analyzeMessage(text) {
     const alerts = [];
     let riskScore = 0;
     const lowerText = text.toLowerCase();
 
     const redFlags = ['urgent', 'immediately', 'verify account', 'bank details', 'winning', 'prize', 'lottery', 'inheritance', 'prince', 'activate your card', 'suspended account', 'click here', 'update your profile', 'confirm your pin', 'send money', 'western union', 'gift card', 'bitcoin investment', 'double your money'];
-
     const sensitiveInfo = ['pin', 'password', 'otp', 'bvn', 'nuban', 'cvv', 'card number', 'atm', 'verification code'];
 
     redFlags.forEach(flag => {
@@ -103,22 +155,29 @@ function analyzeMessage(text) {
     return { riskLevel, emoji, riskScore, alerts, recommendation };
 }
 
-// COMMANDS
+// ========== COMMANDS ==========
 
 bot.start((ctx) => {
     ctx.reply(`
 🔒 *NIGERIA SCAM DETECTOR* 🔒
 *Creator: Joshua Giwa*
 
-Send any suspicious message to analyze it.
+I analyze messages and detect scams instantly.
 
 *Commands:*
 /check [number] - Check a phone number
 /report [number] - Report a scammer
-/stats - Statistics
+/scamtypes - Learn common scams
+/redflags - Words that signal a scam
+/whattodo - If you've been scammed
 /tips - Security tips
-/support - Support this bot
-/vip - Join VIP community
+/community - Join our group
+/stats - Bot statistics
+/help - All commands
+
+*Just forward any suspicious message to me!*
+
+👥 *Join our community:* https://t.me/+8JUqlJ-4SBdlZTM0
 
 🇳🇬 Fighting fraud together!
     `, { parse_mode: 'Markdown' });
@@ -136,9 +195,9 @@ bot.command('check', (ctx) => {
     const isReported = reportedScammers.includes(phoneNumber);
 
     if (isReported) {
-        ctx.reply(`🚨 *ALERT!*\n\n${phoneNumber} is a REPORTED SCAMMER!\n\n❌ Block immediately\n✅ Report to authorities\n\n*Upgrade to VIP:* /vip`, { parse_mode: 'Markdown' });
+        ctx.reply(`🚨 *ALERT!*\n\nPhone: *${phoneNumber}*\nStatus: *REPORTED SCAMMER* ⚠️\n\n❌ Block immediately\n❌ Do not send money\n\n👥 Join our community for live alerts: https://t.me/+8JUqlJ-4SBdlZTM0`, { parse_mode: 'Markdown' });
     } else {
-        ctx.reply(`✅ *CLEAR*\n\n${phoneNumber} has no reports.\n\n⚠️ Still be cautious.\n\n*Upgrade to VIP for deep search:* /vip`, { parse_mode: 'Markdown' });
+        ctx.reply(`✅ *CLEAR*\n\nPhone: *${phoneNumber}*\nStatus: *No reports*\n\n⚠️ Still be cautious.\n\nIf this number tries to scam you: /report ${phoneNumber}\n\n👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`, { parse_mode: 'Markdown' });
     }
 });
 
@@ -160,8 +219,27 @@ bot.command('report', (ctx) => {
     reportedScammers.push(phoneNumber);
     saveScammers();
 
-    ctx.reply(`✅ *REPORT RECORDED*\n\nPhone: ${phoneNumber}\nReason: ${reason}\n\nTotal reports: ${reportedScammers.length}\n\nThank you for protecting others! 🛡️`, { parse_mode: 'Markdown' });
+    ctx.reply(`✅ *REPORT RECORDED*\n\nPhone: ${phoneNumber}\nReason: ${reason}\n\nTotal reports: ${reportedScammers.length}\n\nYou just protected others! 🛡️\n\n👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`, { parse_mode: 'Markdown' });
     console.log(`[REPORT] ${phoneNumber} - ${reason}`);
+});
+
+bot.command('community', (ctx) => {
+    ctx.reply(`
+👥 *NIGERIA SECURITY HUB*
+
+Join our Telegram community for:
+✅ Live scam alerts
+✅ Ask "Is this a scam?" anytime
+✅ Share your experience
+✅ Get help if scammed
+✅ Connect with others
+
+*Click here to join:* https://t.me/+8JUqlJ-4SBdlZTM0
+
+No approval needed. Everyone welcome!
+
+🇳🇬 Together we fight fraud.
+    `, { parse_mode: 'Markdown' });
 });
 
 bot.command('stats', (ctx) => {
@@ -169,58 +247,68 @@ bot.command('stats', (ctx) => {
 📊 *STATISTICS*
 
 Reported scammers: ${reportedScammers.length}
-VIP members: ${vipUsers.length}
+Tip subscribers: ${tipSubscribers.length}
 
-*Top scams in Nigeria:*
-1. Fake bank alerts
-2. Employment scams
-3. Investment fraud
-
-*Support the mission:* /support
+👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0
     `, { parse_mode: 'Markdown' });
 });
 
 bot.command('tips', (ctx) => {
-    const tips = [
-        "🔐 Never share your OTP with anyone",
-        "💰 10x returns = 100% scam",
-        "📞 Verify urgent requests by CALLING back",
-        "🏦 Banks never ask for your PIN",
-        "💔 Romance scammers build trust for months"
-    ];
-    const randomTip = tips[Math.floor(Math.random() * tips.length)];
-    ctx.reply(`*SECURITY TIP*\n\n${randomTip}\n\nSend /tips for more`, { parse_mode: 'Markdown' });
+    const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
+    ctx.reply(`*SECURITY TIP*\n\n${randomTip}\n\nSubscribe for daily tips: /subscribetips`, { parse_mode: 'Markdown' });
+});
+
+bot.command('subscribetips', (ctx) => {
+    const userId = ctx.from.id;
+    if (!tipSubscribers.includes(userId)) {
+        tipSubscribers.push(userId);
+        saveTipSubscribers();
+        ctx.reply(`✅ Subscribed! You'll get a tip every morning.\n\n👥 Join community: https://t.me/+8JUqlJ-4SBdlZTM0`);
+    } else {
+        ctx.reply(`ℹ️ You're already subscribed!`);
+    }
+});
+
+bot.command('unsubscribetips', (ctx) => {
+    const userId = ctx.from.id;
+    const index = tipSubscribers.indexOf(userId);
+    if (index > -1) {
+        tipSubscribers.splice(index, 1);
+        saveTipSubscribers();
+        ctx.reply(`❌ Unsubscribed from daily tips.`);
+    } else {
+        ctx.reply(`ℹ️ You weren't subscribed.`);
+    }
+});
+
+bot.command('scamtypes', (ctx) => {
+    ctx.reply(defaultScamTypes, { parse_mode: 'Markdown' });
+});
+
+bot.command('redflags', (ctx) => {
+    ctx.reply(defaultRedFlags, { parse_mode: 'Markdown' });
+});
+
+bot.command('whattodo', (ctx) => {
+    ctx.reply(defaultWhatToDo, { parse_mode: 'Markdown' });
 });
 
 bot.command('support', (ctx) => {
     ctx.reply(`
 💚 *SUPPORT THE MISSION*
 
-Help keep Nigeria safe from scammers.
+This bot is free forever. But running costs money.
 
 *Send support to:*
 
-Bank: [YOUR BANK NAME]
-Account: [YOUR ACCOUNT NUMBER]
+🏦 *Zenith Bank*
+Account: 4268186069
 Name: Joshua Giwa
 
-Opay/PalmPay: [YOUR PHONE NUMBER]
+Any amount helps! 🇳🇬
 
-*VIP membership:* Send /vip
-
-Any amount matters! 🇳🇬
+👥 *Better yet, join our community:* https://t.me/+8JUqlJ-4SBdlZTM0
     `, { parse_mode: 'Markdown' });
-});
-
-bot.command('vip', (ctx) => {
-    const userId = ctx.from.id;
-    const isVip = vipUsers.includes(userId);
-
-    if (isVip) {
-        ctx.reply(`👑 *VIP MEMBER*\n\nYou have access to:\n✅ Deep search\n✅ Early alerts\n✅ Private group\n\nThank you for supporting!`, { parse_mode: 'Markdown' });
-    } else {
-        ctx.reply(`💎 *UPGRADE TO VIP* 💎\n\n*Price:* ₦1,000 (one-time)\n\n*Benefits:*\n🔍 Deep search\n⚡ Early alerts\n👥 Private VIP group\n\n*How to join:*\n1. Send ₦1,000 to:\n   Bank: [YOUR BANK]\n   Account: [YOUR NUMBER]\n2. Send screenshot here\n3. Get VIP access instantly!`, { parse_mode: 'Markdown' });
-    }
 });
 
 // Auto-analyze messages
@@ -232,10 +320,9 @@ bot.on('text', async (ctx) => {
 
     if (analysis.riskScore >= 20) {
         let response = `${analysis.emoji} *${analysis.riskLevel} RISK* ${analysis.emoji}\n\n`;
-        response += `Score: ${analysis.riskScore}/100\n\n`;
-        response += `${analysis.alerts.slice(0, 2).join('\n')}\n\n`;
+        response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
         response += `*Action:* ${analysis.recommendation}\n\n`;
-        response += `🛡️ *${analysis.riskLevel === 'HIGH' ? 'Upgrade to VIP: /vip' : 'Stay safe!'}*`;
+        response += `👥 *Join our community for help:* https://t.me/+8JUqlJ-4SBdlZTM0`;
 
         ctx.reply(response, { parse_mode: 'Markdown' });
     }
@@ -243,53 +330,84 @@ bot.on('text', async (ctx) => {
 
 bot.help((ctx) => {
     ctx.reply(`
-*COMMANDS*
+📚 *COMMANDS*
 
-/start - Welcome
-/help - This menu
 /check [number] - Check scammer
 /report [number] - Report scammer
+/community - Join our group
+/scamtypes - Learn common scams
+/redflags - Scam warning words
+/whattodo - After being scammed
+/tips - Security tip
+/subscribetips - Daily tips
 /stats - Statistics
-/tips - Security tips
-/support - Donate
-/vip - Upgrade
+/support - Support the mission
+
+👥 *Community:* https://t.me/+8JUqlJ-4SBdlZTM0
     `, { parse_mode: 'Markdown' });
 });
 
-// Admin: Add VIP (only you)
+// Admin commands
 bot.command('addvip', (ctx) => {
-    const YOUR_ID = 123456789; // CHANGE THIS TO YOUR TELEGRAM ID
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    ctx.reply('ℹ️ VIP system is disabled. Everyone is welcome in the community!');
+});
 
+bot.command('listscammers', (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only.');
         return;
     }
 
-    const parts = ctx.message.text.split(' ');
-    const userId = parseInt(parts[1]);
-
-    if (!userId) {
-        ctx.reply('Usage: /addvip [user_id]\nGet ID from @userinfobot');
+    if (reportedScammers.length === 0) {
+        ctx.reply('No scammers reported yet.');
         return;
     }
 
-    if (!vipUsers.includes(userId)) {
-        vipUsers.push(userId);
-        saveVipUsers();
-        ctx.reply(`✅ VIP added for user ${userId}`);
-    } else {
-        ctx.reply(`User ${userId} is already VIP.`);
+    let message = `📋 SCAMMERS (${reportedScammers.length})\n\n`;
+    for (let i = 0; i < Math.min(30, reportedScammers.length); i++) {
+        message += `${i+1}. ${reportedScammers[i]}\n`;
     }
+    ctx.reply(message);
 });
 
-// For Render - keep alive
+// Daily tips function
+async function sendDailyTips() {
+    const now = new Date();
+    const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
+    const tipIndex = nigeriaTime.getDate() % dailyTips.length;
+    const tip = dailyTips[tipIndex];
+    
+    for (let userId of tipSubscribers) {
+        try {
+            await bot.telegram.sendMessage(userId, tip, { parse_mode: 'Markdown' });
+        } catch (err) {}
+    }
+    console.log(`Sent tips to ${tipSubscribers.length} users`);
+}
+
+// Keep alive for Render
 const PORT = process.env.PORT || 3000;
 if (process.env.PORT) {
     const express = require('express');
     const app = express();
-    app.get('/', (req, res) => res.send('Bot is running'));
-    app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
+    app.get('/', (req, res) => res.send('Nigeria Scam Detector Bot is running!'));
+    app.listen(PORT, () => console.log(`Web server on port ${PORT}`));
 }
+
+// Schedule daily tips at 8am Nigeria time
+function scheduleDailyTips() {
+    const now = new Date();
+    const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
+    if (nigeriaTime.getHours() === 8) {
+        sendDailyTips();
+    }
+    setTimeout(scheduleDailyTips, 60 * 60 * 1000);
+}
+scheduleDailyTips();
 
 // Launch
 bot.launch().then(() => {
@@ -297,14 +415,26 @@ bot.launch().then(() => {
     console.log('✅ NIGERIA SCAM DETECTOR IS LIVE!');
     console.log('👑 Creator: Joshua Giwa');
     console.log(`📊 ${reportedScammers.length} scammers reported`);
-    console.log(`👑 ${vipUsers.length} VIP members`);
+    console.log(`📰 ${tipSubscribers.length} tip subscribers`);
+    console.log(`👥 Community: https://t.me/+8JUqlJ-4SBdlZTM0`);
     console.log('========================================');
 });
 
 bot.catch((err, ctx) => {
     console.error('Error:', err);
-    ctx.reply('Error occurred. Try again.');
+    ctx.reply('⚠️ Error occurred. Try again.');
 });
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+process.once('SIGINT', () => {
+    saveScammers();
+    saveTipSubscribers();
+    bot.stop('SIGINT');
+    process.exit();
+});
+
+process.once('SIGTERM', () => {
+    saveScammers();
+    saveTipSubscribers();
+    bot.stop('SIGTERM');
+    process.exit();
+});
