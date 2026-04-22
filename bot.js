@@ -5,16 +5,12 @@
 const { Telegraf } = require('telegraf');
 const fs = require('fs');
 
-try {
-    require('dotenv').config();
-} catch (err) {
-    console.log('No .env file (running on Render)');
-}
-
+// Get token from environment variable (set in Render)
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
 if (!BOT_TOKEN) {
     console.error('❌ BOT_TOKEN not found!');
+    console.error('Add BOT_TOKEN in Render Environment Variables');
     process.exit(1);
 }
 
@@ -51,8 +47,22 @@ function saveTipSubscribers() {
     fs.writeFileSync('tipsubscribers.json', JSON.stringify(tipSubscribers, null, 2));
 }
 
+// Daily tips array
+const dailyTips = [
+    "📚 *TODAY'S TIP*\n\nNever share your OTP with anyone. Banks will NEVER ask for it.",
+    "📚 *TODAY'S TIP*\n\nIf someone promises to double your money in 24 hours, RUN. It's a scam.",
+    "📚 *TODAY'S TIP*\n\nVerify urgent requests by CALLING the person back. Don't trust SMS.",
+    "📚 *TODAY'S TIP*\n\nRomance scammers build trust for months before asking for money.",
+    "📚 *TODAY'S TIP*\n\nLegitimate jobs never ask for payment to hire you.",
+    "📚 *TODAY'S TIP*\n\nAlways /check any number before sending money.",
+    "📚 *TODAY'S TIP*\n\nNo bank employee will ever call you for your PIN or OTP.",
+    "📚 *TODAY'S TIP*\n\nIf an investment sounds too good to be true, it is.",
+    "📚 *TODAY'S TIP*\n\nScammers create urgency to stop you from thinking clearly.",
+    "📚 *TODAY'S TIP*\n\nJoin our community for real-time scam alerts: " + COMMUNITY_LINK
+];
+
 // Education content
-const defaultScamTypes = `📚 *COMMON SCAMS IN NIGERIA*
+const scamTypesContent = `📚 *COMMON SCAMS IN NIGERIA*
 
 *1. Fake Bank Alerts* 🏦
 Wait for money to reflect in your balance, not just SMS.
@@ -69,9 +79,9 @@ If it sounds too good to be true, it is.
 *5. Phishing Links* 🔗
 Never click links in suspicious messages.
 
-👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`;
+👥 Join our community: ${COMMUNITY_LINK}`;
 
-const defaultRedFlags = `🚩 *SCAM RED FLAGS*
+const redFlagsContent = `🚩 *SCAM RED FLAGS*
 
 URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
 MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
@@ -80,25 +90,15 @@ FAKE: "WINNING", "LOTTERY", "PRINCE"
 
 If you see these + asking for money = SCAM
 
-👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`;
+👥 Join our community: ${COMMUNITY_LINK}`;
 
-const defaultWhatToDo = `🆘 *YOU'VE BEEN SCAMMED*
+const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 
 1. Contact your bank immediately
 2. Save all evidence
 3. Report to EFCC: 08093322644
 4. Report number to this bot: /report
-5. Join our community for support: https://t.me/+8JUqlJ-4SBdlZTM0`;
-
-const dailyTips = [
-    "📚 Never share your OTP with anyone. Banks will NEVER ask for it.",
-    "📚 If someone promises to double your money in 24 hours, RUN.",
-    "📚 Verify urgent requests by CALLING the person back.",
-    "📚 Romance scammers build trust for months before asking for money.",
-    "📚 Legitimate jobs never ask for payment to hire you.",
-    "📚 Always /check any number before sending money.",
-    "📚 Join our community for real-time scam alerts: https://t.me/+8JUqlJ-4SBdlZTM0"
-];
+5. Join our community for support: ${COMMUNITY_LINK}`;
 
 // ========== SCAM DETECTION ==========
 function analyzeMessage(text) {
@@ -172,12 +172,13 @@ I analyze messages and detect scams instantly.
 /whattodo - If you've been scammed
 /tips - Security tips
 /community - Join our group
+/subscribetips - Get daily tips
 /stats - Bot statistics
 /help - All commands
 
 *Just forward any suspicious message to me!*
 
-👥 *Join our community:* https://t.me/+8JUqlJ-4SBdlZTM0
+👥 *Join our community:* ${COMMUNITY_LINK}
 
 🇳🇬 Fighting fraud together!
     `, { parse_mode: 'Markdown' });
@@ -195,9 +196,9 @@ bot.command('check', (ctx) => {
     const isReported = reportedScammers.includes(phoneNumber);
 
     if (isReported) {
-        ctx.reply(`🚨 *ALERT!*\n\nPhone: *${phoneNumber}*\nStatus: *REPORTED SCAMMER* ⚠️\n\n❌ Block immediately\n❌ Do not send money\n\n👥 Join our community for live alerts: https://t.me/+8JUqlJ-4SBdlZTM0`, { parse_mode: 'Markdown' });
+        ctx.reply(`🚨 *ALERT!*\n\nPhone: *${phoneNumber}*\nStatus: *REPORTED SCAMMER* ⚠️\n\n❌ Block immediately\n❌ Do not send money\n\n👥 Join our community for live alerts: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     } else {
-        ctx.reply(`✅ *CLEAR*\n\nPhone: *${phoneNumber}*\nStatus: *No reports*\n\n⚠️ Still be cautious.\n\nIf this number tries to scam you: /report ${phoneNumber}\n\n👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`, { parse_mode: 'Markdown' });
+        ctx.reply(`✅ *CLEAR*\n\nPhone: *${phoneNumber}*\nStatus: *No reports*\n\n⚠️ Still be cautious.\n\nIf this number tries to scam you: /report ${phoneNumber}\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     }
 });
 
@@ -219,7 +220,7 @@ bot.command('report', (ctx) => {
     reportedScammers.push(phoneNumber);
     saveScammers();
 
-    ctx.reply(`✅ *REPORT RECORDED*\n\nPhone: ${phoneNumber}\nReason: ${reason}\n\nTotal reports: ${reportedScammers.length}\n\nYou just protected others! 🛡️\n\n👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`, { parse_mode: 'Markdown' });
+    ctx.reply(`✅ *REPORT RECORDED*\n\nPhone: ${phoneNumber}\nReason: ${reason}\n\nTotal reports: ${reportedScammers.length}\n\nYou just protected others! 🛡️\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     console.log(`[REPORT] ${phoneNumber} - ${reason}`);
 });
 
@@ -234,7 +235,7 @@ Join our Telegram community for:
 ✅ Get help if scammed
 ✅ Connect with others
 
-*Click here to join:* https://t.me/+8JUqlJ-4SBdlZTM0
+*Click here to join:* ${COMMUNITY_LINK}
 
 No approval needed. Everyone welcome!
 
@@ -249,13 +250,13 @@ bot.command('stats', (ctx) => {
 Reported scammers: ${reportedScammers.length}
 Tip subscribers: ${tipSubscribers.length}
 
-👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0
+👥 Join our community: ${COMMUNITY_LINK}
     `, { parse_mode: 'Markdown' });
 });
 
 bot.command('tips', (ctx) => {
     const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
-    ctx.reply(`*SECURITY TIP*\n\n${randomTip}\n\nSubscribe for daily tips: /subscribetips`, { parse_mode: 'Markdown' });
+    ctx.reply(`${randomTip}\n\nSubscribe for daily tips: /subscribetips`, { parse_mode: 'Markdown' });
 });
 
 bot.command('subscribetips', (ctx) => {
@@ -263,9 +264,9 @@ bot.command('subscribetips', (ctx) => {
     if (!tipSubscribers.includes(userId)) {
         tipSubscribers.push(userId);
         saveTipSubscribers();
-        ctx.reply(`✅ Subscribed! You'll get a tip every morning.\n\n👥 Join community: https://t.me/+8JUqlJ-4SBdlZTM0`);
+        ctx.reply(`✅ *Subscribed!*\n\nYou will receive a security tip every morning at 8am.\n\nTo unsubscribe: /unsubscribetips\n\n👥 Join community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     } else {
-        ctx.reply(`ℹ️ You're already subscribed!`);
+        ctx.reply(`ℹ️ You're already subscribed to daily tips!\n\nTo unsubscribe: /unsubscribetips`, { parse_mode: 'Markdown' });
     }
 });
 
@@ -275,22 +276,22 @@ bot.command('unsubscribetips', (ctx) => {
     if (index > -1) {
         tipSubscribers.splice(index, 1);
         saveTipSubscribers();
-        ctx.reply(`❌ Unsubscribed from daily tips.`);
+        ctx.reply(`❌ *Unsubscribed*\n\nYou will no longer receive daily tips.\n\nTo subscribe again: /subscribetips`, { parse_mode: 'Markdown' });
     } else {
-        ctx.reply(`ℹ️ You weren't subscribed.`);
+        ctx.reply(`ℹ️ You weren't subscribed to daily tips.\n\nTo subscribe: /subscribetips`, { parse_mode: 'Markdown' });
     }
 });
 
 bot.command('scamtypes', (ctx) => {
-    ctx.reply(defaultScamTypes, { parse_mode: 'Markdown' });
+    ctx.reply(scamTypesContent, { parse_mode: 'Markdown' });
 });
 
 bot.command('redflags', (ctx) => {
-    ctx.reply(defaultRedFlags, { parse_mode: 'Markdown' });
+    ctx.reply(redFlagsContent, { parse_mode: 'Markdown' });
 });
 
 bot.command('whattodo', (ctx) => {
-    ctx.reply(defaultWhatToDo, { parse_mode: 'Markdown' });
+    ctx.reply(whatToDoContent, { parse_mode: 'Markdown' });
 });
 
 bot.command('support', (ctx) => {
@@ -307,7 +308,7 @@ Name: Joshua Giwa
 
 Any amount helps! 🇳🇬
 
-👥 *Better yet, join our community:* https://t.me/+8JUqlJ-4SBdlZTM0
+👥 *Better yet, join our community:* ${COMMUNITY_LINK}
     `, { parse_mode: 'Markdown' });
 });
 
@@ -322,7 +323,7 @@ bot.on('text', async (ctx) => {
         let response = `${analysis.emoji} *${analysis.riskLevel} RISK* ${analysis.emoji}\n\n`;
         response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
         response += `*Action:* ${analysis.recommendation}\n\n`;
-        response += `👥 *Join our community for help:* https://t.me/+8JUqlJ-4SBdlZTM0`;
+        response += `👥 *Join our community for help:* ${COMMUNITY_LINK}`;
 
         ctx.reply(response, { parse_mode: 'Markdown' });
     }
@@ -338,24 +339,17 @@ bot.help((ctx) => {
 /scamtypes - Learn common scams
 /redflags - Scam warning words
 /whattodo - After being scammed
-/tips - Security tip
-/subscribetips - Daily tips
-/stats - Statistics
+/tips - Random security tip
+/subscribetips - Get daily tips at 8am
+/unsubscribetips - Stop daily tips
+/stats - Bot statistics
 /support - Support the mission
 
-👥 *Community:* https://t.me/+8JUqlJ-4SBdlZTM0
+👥 *Community:* ${COMMUNITY_LINK}
     `, { parse_mode: 'Markdown' });
 });
 
 // Admin commands
-bot.command('addvip', (ctx) => {
-    if (ctx.from.id !== YOUR_ID) {
-        ctx.reply('❌ Admin only.');
-        return;
-    }
-    ctx.reply('ℹ️ VIP system is disabled. Everyone is welcome in the community!');
-});
-
 bot.command('listscammers', (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only.');
@@ -367,56 +361,84 @@ bot.command('listscammers', (ctx) => {
         return;
     }
 
-    let message = `📋 SCAMMERS (${reportedScammers.length})\n\n`;
+    let message = `📋 *REPORTED SCAMMERS (${reportedScammers.length})*\n\n`;
     for (let i = 0; i < Math.min(30, reportedScammers.length); i++) {
         message += `${i+1}. ${reportedScammers[i]}\n`;
     }
-    ctx.reply(message);
+    
+    if (reportedScammers.length > 30) {
+        message += `\n...and ${reportedScammers.length - 30} more.`;
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
-// Daily tips function
+// ========== DAILY TIPS SYSTEM ==========
+
+// Function to send tips to all subscribers
 async function sendDailyTips() {
-    const now = new Date();
-    const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
-    const tipIndex = nigeriaTime.getDate() % dailyTips.length;
-    const tip = dailyTips[tipIndex];
+    if (tipSubscribers.length === 0) {
+        console.log('No tip subscribers yet');
+        return;
+    }
     
+    // Get today's tip based on date
+    const today = new Date();
+    const nigeriaTime = new Date(today.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
+    const dayOfMonth = nigeriaTime.getDate();
+    const tipIndex = (dayOfMonth - 1) % dailyTips.length;
+    const todaysTip = dailyTips[tipIndex];
+    
+    let successCount = 0;
     for (let userId of tipSubscribers) {
         try {
-            await bot.telegram.sendMessage(userId, tip, { parse_mode: 'Markdown' });
-        } catch (err) {}
+            await bot.telegram.sendMessage(userId, todaysTip, { parse_mode: 'Markdown' });
+            successCount++;
+        } catch (err) {
+            console.log(`Failed to send tip to ${userId}`);
+        }
     }
-    console.log(`Sent tips to ${tipSubscribers.length} users`);
+    console.log(`📰 Sent daily tips to ${successCount}/${tipSubscribers.length} users at ${nigeriaTime.toLocaleTimeString()}`);
 }
 
-// Keep alive for Render
+// Schedule checker - runs every hour
+function scheduleDailyTips() {
+    const now = new Date();
+    const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
+    const currentHour = nigeriaTime.getHours();
+    const currentMinute = nigeriaTime.getMinutes();
+    
+    // Send at 8:00 AM Nigeria time
+    if (currentHour === 8 && currentMinute === 0) {
+        sendDailyTips();
+    }
+    
+    // Check again in 60 seconds (not 1 hour - more accurate)
+    setTimeout(scheduleDailyTips, 60 * 1000);
+}
+
+// Start the scheduler
+scheduleDailyTips();
+console.log('⏰ Daily tips scheduler started - will send at 8am Nigeria time');
+
+// ========== KEEP ALIVE FOR RENDER ==========
 const PORT = process.env.PORT || 3000;
 if (process.env.PORT) {
     const express = require('express');
     const app = express();
     app.get('/', (req, res) => res.send('Nigeria Scam Detector Bot is running!'));
-    app.listen(PORT, () => console.log(`Web server on port ${PORT}`));
+    app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 }
 
-// Schedule daily tips at 8am Nigeria time
-function scheduleDailyTips() {
-    const now = new Date();
-    const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
-    if (nigeriaTime.getHours() === 8) {
-        sendDailyTips();
-    }
-    setTimeout(scheduleDailyTips, 60 * 60 * 1000);
-}
-scheduleDailyTips();
-
-// Launch
+// ========== LAUNCH ==========
 bot.launch().then(() => {
     console.log('========================================');
     console.log('✅ NIGERIA SCAM DETECTOR IS LIVE!');
     console.log('👑 Creator: Joshua Giwa');
     console.log(`📊 ${reportedScammers.length} scammers reported`);
     console.log(`📰 ${tipSubscribers.length} tip subscribers`);
-    console.log(`👥 Community: https://t.me/+8JUqlJ-4SBdlZTM0`);
+    console.log(`👥 Community: ${COMMUNITY_LINK}`);
+    console.log('⏰ Daily tips scheduled for 8am Nigeria time');
     console.log('========================================');
 });
 
@@ -426,6 +448,7 @@ bot.catch((err, ctx) => {
 });
 
 process.once('SIGINT', () => {
+    console.log('🛑 Bot shutting down...');
     saveScammers();
     saveTipSubscribers();
     bot.stop('SIGINT');
@@ -433,6 +456,7 @@ process.once('SIGINT', () => {
 });
 
 process.once('SIGTERM', () => {
+    console.log('🛑 Bot shutting down...');
     saveScammers();
     saveTipSubscribers();
     bot.stop('SIGTERM');
