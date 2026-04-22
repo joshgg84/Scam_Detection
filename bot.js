@@ -1,11 +1,18 @@
 // Nigeria Scam Detector Bot - Joshua Giwa
 const { Telegraf } = require('telegraf');
-require('dotenv').config();
+
+// Try to load .env locally, but don't fail on Render
+try {
+    require('dotenv').config();
+} catch (err) {
+    console.log('No .env file (running on Render)');
+}
 
 const BOT_TOKEN = process.env.BOT_TOKEN;
 
 if (!BOT_TOKEN) {
-    console.error('❌ BOT_TOKEN not found in .env file');
+    console.error('❌ BOT_TOKEN not found!');
+    console.error('Make sure to add BOT_TOKEN in Environment Variables on Render');
     process.exit(1);
 }
 
@@ -274,6 +281,15 @@ bot.command('addvip', (ctx) => {
         ctx.reply(`User ${userId} is already VIP.`);
     }
 });
+
+// For Render - keep alive
+const PORT = process.env.PORT || 3000;
+if (process.env.PORT) {
+    const express = require('express');
+    const app = express();
+    app.get('/', (req, res) => res.send('Bot is running'));
+    app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
+}
 
 // Launch
 bot.launch().then(() => {
