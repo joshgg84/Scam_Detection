@@ -1,0 +1,14 @@
+{
+  "name": "scam-detector-bot",
+  "version": "1.0.0",
+  "description": "Nigeria Scam Detector Bot by Joshua Giwa",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.15.3",
+    "dotenv": "^16.3.1"
+  }
+}
+
