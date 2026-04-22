@@ -4,6 +4,8 @@
 
 const { Telegraf } = require('telegraf');
 const fs = require('fs');
+const { addScammer, isScammer, getScammerCount, getAllScammers, getRecentScammers } = require('./scammers.js');
+const { dailyTips } = require('./tips.js');
 
 // Get token from environment variable (set in Render)
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -21,19 +23,6 @@ const YOUR_ID = 8447414897; // Joshua's Telegram ID
 const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
 
 // ========== DATA FILES ==========
-let reportedScammers = [];
-try {
-    const data = fs.readFileSync('scammers.json', 'utf8');
-    reportedScammers = JSON.parse(data);
-    console.log(`📚 Loaded ${reportedScammers.length} reported scammers`);
-} catch (err) {
-    console.log('📝 No scammers yet');
-}
-
-function saveScammers() {
-    fs.writeFileSync('scammers.json', JSON.stringify(reportedScammers, null, 2));
-}
-
 let tipSubscribers = [];
 try {
     const tipData = fs.readFileSync('tipsubscribers.json', 'utf8');
@@ -46,20 +35,6 @@ try {
 function saveTipSubscribers() {
     fs.writeFileSync('tipsubscribers.json', JSON.stringify(tipSubscribers, null, 2));
 }
-
-// Daily tips array
-const dailyTips = [
-    "📚 *TODAY'S TIP*\n\nNever share your OTP with anyone. Banks will NEVER ask for it.",
-    "📚 *TODAY'S TIP*\n\nIf someone promises to double your money in 24 hours, RUN. It's a scam.",
-    "📚 *TODAY'S TIP*\n\nVerify urgent requests by CALLING the person back. Don't trust SMS.",
-    "📚 *TODAY'S TIP*\n\nRomance scammers build trust for months before asking for money.",
-    "📚 *TODAY'S TIP*\n\nLegitimate jobs never ask for payment to hire you.",
-    "📚 *TODAY'S TIP*\n\nAlways /check any number before sending money.",
-    "📚 *TODAY'S TIP*\n\nNo bank employee will ever call you for your PIN or OTP.",
-    "📚 *TODAY'S TIP*\n\nIf an investment sounds too good to be true, it is.",
-    "📚 *TODAY'S TIP*\n\nScammers create urgency to stop you from thinking clearly.",
-    "📚 *TODAY'S TIP*\n\nJoin our community for real-time scam alerts: " + COMMUNITY_LINK
-];
 
 // Education content
 const scamTypesContent = `📚 *COMMON SCAMS IN NIGERIA*
@@ -131,7 +106,7 @@ function analyzeMessage(text) {
     const phoneMatch = text.match(/0[789][01]\d{8}/);
     if (phoneMatch) {
         const number = phoneMatch[0];
-        if (reportedScammers.includes(number)) {
+        if (isScammer(number)) {
             alerts.push(`🚨 ${number} is a REPORTED SCAMMER!`);
             riskScore += 50;
         }
@@ -193,9 +168,9 @@ bot.command('check', (ctx) => {
         return;
     }
 
-    const isReported = reportedScammers.includes(phoneNumber);
+    const reported = isScammer(phoneNumber);
 
-    if (isReported) {
+    if (reported) {
         ctx.reply(`🚨 *ALERT!*\n\nPhone: *${phoneNumber}*\nStatus: *REPORTED SCAMMER* ⚠️\n\n❌ Block immediately\n❌ Do not send money\n\n👥 Join our community for live alerts: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     } else {
         ctx.reply(`✅ *CLEAR*\n\nPhone: *${phoneNumber}*\nStatus: *No reports*\n\n⚠️ Still be cautious.\n\nIf this number tries to scam you: /report ${phoneNumber}\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
@@ -206,22 +181,22 @@ bot.command('report', (ctx) => {
     const parts = ctx.message.text.split(' ');
     const phoneNumber = parts[1];
     const reason = parts.slice(2).join(' ') || 'Suspicious activity';
+    const reporter = ctx.from.username || ctx.from.id.toString();
 
     if (!phoneNumber) {
-        ctx.reply('📞 Usage: `/report 08012345678 [reason]`', { parse_mode: 'Markdown' });
+        ctx.reply('📞 Usage: `/report 08012345678 [reason]`\n\nExample: `/report 08012345678 Fake bank alert`', { parse_mode: 'Markdown' });
         return;
     }
 
-    if (reportedScammers.includes(phoneNumber)) {
+    if (isScammer(phoneNumber)) {
         ctx.reply(`⚠️ ${phoneNumber} is already reported.`);
         return;
     }
 
-    reportedScammers.push(phoneNumber);
-    saveScammers();
+    const result = addScammer(phoneNumber, reason, reporter);
 
-    ctx.reply(`✅ *REPORT RECORDED*\n\nPhone: ${phoneNumber}\nReason: ${reason}\n\nTotal reports: ${reportedScammers.length}\n\nYou just protected others! 🛡️\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-    console.log(`[REPORT] ${phoneNumber} - ${reason}`);
+    ctx.reply(`✅ *REPORT RECORDED*\n\nPhone: ${phoneNumber}\nReason: ${reason}\n\nTotal reports: ${result.total}\n\nYou just protected others! 🛡️\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
+    console.log(`[REPORT] ${phoneNumber} - ${reason} - By: ${reporter}`);
 });
 
 bot.command('community', (ctx) => {
@@ -244,10 +219,11 @@ No approval needed. Everyone welcome!
 });
 
 bot.command('stats', (ctx) => {
+    const scammerCount = getScammerCount();
     ctx.reply(`
 📊 *STATISTICS*
 
-Reported scammers: ${reportedScammers.length}
+Reported scammers: ${scammerCount}
 Tip subscribers: ${tipSubscribers.length}
 
 👥 Join our community: ${COMMUNITY_LINK}
@@ -356,18 +332,41 @@ bot.command('listscammers', (ctx) => {
         return;
     }
 
-    if (reportedScammers.length === 0) {
+    const scammers = getAllScammers();
+    
+    if (scammers.length === 0) {
         ctx.reply('No scammers reported yet.');
         return;
     }
 
-    let message = `📋 *REPORTED SCAMMERS (${reportedScammers.length})*\n\n`;
-    for (let i = 0; i < Math.min(30, reportedScammers.length); i++) {
-        message += `${i+1}. ${reportedScammers[i]}\n`;
+    let message = `📋 *REPORTED SCAMMERS (${scammers.length})*\n\n`;
+    for (let i = 0; i < Math.min(30, scammers.length); i++) {
+        message += `${i+1}. ${scammers[i]}\n`;
     }
     
-    if (reportedScammers.length > 30) {
-        message += `\n...and ${reportedScammers.length - 30} more.`;
+    if (scammers.length > 30) {
+        message += `\n...and ${scammers.length - 30} more.`;
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+bot.command('recent', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+
+    const recent = getRecentScammers(10);
+    
+    if (recent.length === 0) {
+        ctx.reply('No scammers reported yet.');
+        return;
+    }
+
+    let message = `📋 *RECENT SCAMMERS (last ${recent.length})*\n\n`;
+    for (let i = 0; i < recent.length; i++) {
+        message += `${i+1}. ${recent[i]}\n`;
     }
     
     ctx.reply(message, { parse_mode: 'Markdown' });
@@ -375,14 +374,12 @@ bot.command('listscammers', (ctx) => {
 
 // ========== DAILY TIPS SYSTEM ==========
 
-// Function to send tips to all subscribers
 async function sendDailyTips() {
     if (tipSubscribers.length === 0) {
         console.log('No tip subscribers yet');
         return;
     }
     
-    // Get today's tip based on date
     const today = new Date();
     const nigeriaTime = new Date(today.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
     const dayOfMonth = nigeriaTime.getDate();
@@ -398,26 +395,22 @@ async function sendDailyTips() {
             console.log(`Failed to send tip to ${userId}`);
         }
     }
-    console.log(`📰 Sent daily tips to ${successCount}/${tipSubscribers.length} users at ${nigeriaTime.toLocaleTimeString()}`);
+    console.log(`📰 Sent daily tips to ${successCount}/${tipSubscribers.length} users`);
 }
 
-// Schedule checker - runs every hour
 function scheduleDailyTips() {
     const now = new Date();
     const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
     const currentHour = nigeriaTime.getHours();
     const currentMinute = nigeriaTime.getMinutes();
     
-    // Send at 8:00 AM Nigeria time
     if (currentHour === 8 && currentMinute === 0) {
         sendDailyTips();
     }
     
-    // Check again in 60 seconds (not 1 hour - more accurate)
     setTimeout(scheduleDailyTips, 60 * 1000);
 }
 
-// Start the scheduler
 scheduleDailyTips();
 console.log('⏰ Daily tips scheduler started - will send at 8am Nigeria time');
 
@@ -435,7 +428,7 @@ bot.launch().then(() => {
     console.log('========================================');
     console.log('✅ NIGERIA SCAM DETECTOR IS LIVE!');
     console.log('👑 Creator: Joshua Giwa');
-    console.log(`📊 ${reportedScammers.length} scammers reported`);
+    console.log(`📊 ${getScammerCount()} scammers reported`);
     console.log(`📰 ${tipSubscribers.length} tip subscribers`);
     console.log(`👥 Community: ${COMMUNITY_LINK}`);
     console.log('⏰ Daily tips scheduled for 8am Nigeria time');
@@ -449,7 +442,6 @@ bot.catch((err, ctx) => {
 
 process.once('SIGINT', () => {
     console.log('🛑 Bot shutting down...');
-    saveScammers();
     saveTipSubscribers();
     bot.stop('SIGINT');
     process.exit();
@@ -457,7 +449,6 @@ process.once('SIGINT', () => {
 
 process.once('SIGTERM', () => {
     console.log('🛑 Bot shutting down...');
-    saveScammers();
     saveTipSubscribers();
     bot.stop('SIGTERM');
     process.exit();
