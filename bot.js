@@ -82,7 +82,44 @@ function checkNumberInDatabase(phoneNumber) {
     });
 }
 
-// Education content
+// ========== HELP MESSAGE (Reused for /start and /help) ==========
+function getHelpMessage() {
+    return `
+📚 *NIGERIA SCAM DETECTOR - HELP*
+
+*Creator:* Joshua Giwa
+
+*Detection Commands:*
+/check [number] - Check if a number is reported
+/report [number] - Report a scammer
+
+*Education Commands:*
+/scamtypes - Learn common scams in Nigeria
+/redflags - Words that signal a scam
+/whattodo - Steps if you've been scammed
+/tips - Get a random security tip
+
+*Community Commands:*
+/community - Join our Telegram group
+/stats - Bot statistics
+
+*Other Commands:*
+/support - Support this free bot
+/start - Show this menu
+/help - Show this menu
+
+*How to use:*
+1. Forward any suspicious message to me
+2. I'll analyze it and show the risk level
+3. Report scammers to protect others
+
+👥 *Join our community:* ${COMMUNITY_LINK}
+
+🇳🇬 Stay safe. Verify first.
+    `;
+}
+
+// ========== EDUCATION CONTENT ==========
 const scamTypesContent = `📚 *COMMON SCAMS IN NIGERIA*
 
 *1. Fake Bank Alerts* 🏦
@@ -178,30 +215,14 @@ function analyzeMessage(text) {
 
 // ========== COMMANDS ==========
 
+// Start command - Shows help message
 bot.start((ctx) => {
-    ctx.reply(`
-🔒 *NIGERIA SCAM DETECTOR* 🔒
-*Creator: Joshua Giwa*
+    ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' });
+});
 
-I analyze messages and detect scams instantly.
-
-*Commands:*
-/check [number] - Check a phone number
-/report [number] - Report a scammer
-/scamtypes - Learn common scams
-/redflags - Words that signal a scam
-/whattodo - If you've been scammed
-/tips - Random security tip
-/community - Join our group
-/stats - Bot statistics
-/help - All commands
-
-*Just forward any suspicious message to me!*
-
-👥 *Join our community:* ${COMMUNITY_LINK}
-
-🇳🇬 Fighting fraud together!
-    `, { parse_mode: 'Markdown' });
+// Help command - Same as start
+bot.command('help', (ctx) => {
+    ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' });
 });
 
 bot.command('check', (ctx) => {
@@ -339,24 +360,6 @@ bot.on('text', async (ctx) => {
 
         ctx.reply(response, { parse_mode: 'Markdown' });
     }
-});
-
-bot.help((ctx) => {
-    ctx.reply(`
-📚 *COMMANDS*
-
-/check [number] - Check scammer
-/report [number] - Report scammer
-/community - Join our group
-/scamtypes - Learn common scams
-/redflags - Scam warning words
-/whattodo - After being scammed
-/tips - Random security tip
-/stats - Bot statistics
-/support - Support the mission
-
-👥 *Community:* ${COMMUNITY_LINK}
-    `, { parse_mode: 'Markdown' });
 });
 
 // ========== ADMIN ONLY COMMANDS ==========
@@ -516,13 +519,13 @@ if (process.env.PORT) {
     app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 }
 
-// Function to ping your own bot every 5 minutes
+// Function to ping silently every 5 minutes
 async function pingSelf() {
     const PING_INTERVAL = 5 * 60 * 1000; // 5 minutes
     
     setInterval(async () => {
         try {
-            // Silent ping - just logs to console, no message sent
+            // Silent ping - just logs to console
             console.log(`🔄 Self-ping at ${new Date().toLocaleTimeString()}`);
         } catch (err) {
             console.log("❌ Self-ping failed:", err.message);
