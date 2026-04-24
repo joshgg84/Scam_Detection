@@ -266,6 +266,32 @@ No approval needed. Everyone welcome!
 🇳🇬 Together we fight fraud.
     `, { parse_mode: 'Markdown' });
 });
+bot.command('howtoreport', (ctx) => {
+    ctx.reply(`
+📢 *HOW TO REPORT A SCAM*
+
+*Option 1: Forward the message*
+1. Press and hold the suspicious message
+2. Tap "Forward"
+3. Send to @JoshuaGiwaBot
+4. Bot analyzes it instantly
+
+*Option 2: Copy and paste*
+1. Copy the suspicious text
+2. Paste it here
+3. Bot will analyze it
+
+*Option 3: Report phone number*
+/report 08012345678 [reason]
+
+*What happens after you report:*
+✅ Number goes into our database
+✅ Others are protected when they /check
+✅ You help fight fraud in Nigeria
+
+👥 Join our community: ${COMMUNITY_LINK}
+    `, { parse_mode: 'Markdown' });
+});
 
 bot.command('stats', (ctx) => {
     const scammerCount = getScammerCount();
@@ -413,6 +439,192 @@ bot.command('listscammers', (ctx) => {
     ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
+// Command: /viewtips - Show all tips
+bot.command('viewtips', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only command.');
+        return;
+    }
+
+    const args = ctx.message.text.split(' ');
+    
+    // /viewtips - Show summary
+    if (args.length === 1) {
+        let message = `💡 *TIPS DATABASE*\n\n`;
+        message += `Total tips: ${dailyTips.length}\n`;
+        message += `Tips are sent daily at 8am to the group.\n\n`;
+        message += `*Commands:*\n`;
+        message += `/viewtips list - Show all tips\n`;
+        message += `/viewtips [number] - Show tip #1, #2, etc.\n`;
+        message += `/edittip [number] [new text] - Edit a tip\n`;
+        message += `/addtip [new tip] - Add a new tip\n`;
+        message += `/deletetip [number] - Delete a tip`;
+        
+        ctx.reply(message, { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    // /viewtips list - Show all tips (paginated)
+    if (args[1] === 'list') {
+        let allTips = "";
+        for (let i = 0; i < dailyTips.length; i++) {
+            let tipText = dailyTips[i].replace(/📚 \*TODAY'S TIP\*\n\n/g, '').substring(0, 50);
+            allTips += `${i+1}. ${tipText}...\n`;
+        }
+        
+        // Split into multiple messages if too long
+        const chunks = allTips.match(/[\s\S]{1,3800}/g) || [];
+        
+        ctx.reply(`💡 *ALL TIPS (${dailyTips.length})*\n\n${chunks[0]}`, { parse_mode: 'Markdown' });
+        
+        for (let i = 1; i < chunks.length; i++) {
+            ctx.reply(chunks[i], { parse_mode: 'Markdown' });
+        }
+        return;
+    }
+    
+    // /viewtips [number] - Show specific tip
+    const tipNumber = parseInt(args[1]);
+    if (!isNaN(tipNumber) && tipNumber >= 1 && tipNumber <= dailyTips.length) {
+        const tip = dailyTips[tipNumber - 1];
+        ctx.reply(`💡 *TIP #${tipNumber}*\n\n${tip}\n\n*To edit:* /edittip ${tipNumber} [new text]`, { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    ctx.reply(`❌ Invalid. Use /viewtips list or /viewtips [1-${dailyTips.length}]`);
+});
+
+// Command: /edittip [number] [new text] - Edit a tip
+bot.command('edittip', async (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only command.');
+        return;
+    }
+
+    const parts = ctx.message.text.split(' ');
+    if (parts.length < 3) {
+        ctx.reply('📝 *Usage:* `/edittip 5 Your new tip text here`\n\n*Example:* `/edittip 3 Never share your OTP with anyone!`', { parse_mode: 'Markdown' });
+        return;
+    }
+
+    const tipNumber = parseInt(parts[1]);
+    if (isNaN(tipNumber) || tipNumber < 1 || tipNumber > dailyTips.length) {
+        ctx.reply(`❌ Invalid tip number. Tips range from 1 to ${dailyTips.length}. Use /viewtips to see all.`);
+        return;
+    }
+
+    const newTip = parts.slice(2).join(' ');
+    
+    // Store old tip for confirmation
+    const oldTip = dailyTips[tipNumber - 1];
+    
+    // Update the tip
+    dailyTips[tipNumber - 1] = newTip;
+    
+    // Save to tips.js file
+    const fs = require('fs');
+    const tipsContent = `// Nigeria Scam Detector - Daily Tips Database\n// Updated by admin on ${new Date().toLocaleString()}\n\nconst dailyTips = ${JSON.stringify(dailyTips, null, 4)};\n\nmodule.exports = { dailyTips };\n`;
+    
+    try {
+        fs.writeFileSync('tips.js', tipsContent);
+        ctx.reply(`✅ *TIP #${tipNumber} UPDATED*\n\n*Old:* ${oldTip.substring(0, 100)}...\n\n*New:* ${newTip.substring(0, 100)}...\n\nChanges saved to tips.js`, { parse_mode: 'Markdown' });
+        console.log(`📝 Admin edited tip #${tipNumber}`);
+    } catch (err) {
+        ctx.reply(`❌ Failed to save: ${err.message}`);
+    }
+});
+
+// Command: /addtip [new tip] - Add a new tip
+bot.command('addtip', async (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only command.');
+        return;
+    }
+
+    const parts = ctx.message.text.split(' ');
+    if (parts.length < 2) {
+        ctx.reply('📝 *Usage:* `/addtip Your new security tip here`\n\n*Example:* `/addtip Never share your BVN with anyone online`', { parse_mode: 'Markdown' });
+        return;
+    }
+
+    const newTip = parts.slice(1).join(' ');
+    
+    // Add to array
+    dailyTips.push(newTip);
+    
+    // Save to tips.js file
+    const fs = require('fs');
+    const tipsContent = `// Nigeria Scam Detector - Daily Tips Database\n// Updated by admin on ${new Date().toLocaleString()}\n\nconst dailyTips = ${JSON.stringify(dailyTips, null, 4)};\n\nmodule.exports = { dailyTips };\n`;
+    
+    try {
+        fs.writeFileSync('tips.js', tipsContent);
+        ctx.reply(`✅ *NEW TIP ADDED*\n\nTip #${dailyTips.length}: ${newTip}\n\nTotal tips: ${dailyTips.length}\n\n*To edit:* /edittip ${dailyTips.length} [new text]`, { parse_mode: 'Markdown' });
+        console.log(`📝 Admin added new tip #${dailyTips.length}`);
+    } catch (err) {
+        ctx.reply(`❌ Failed to save: ${err.message}`);
+    }
+});
+
+// Command: /deletetip [number] - Delete a tip
+bot.command('deletetip', async (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only command.');
+        return;
+    }
+
+    const parts = ctx.message.text.split(' ');
+    if (parts.length < 2) {
+        ctx.reply('📝 *Usage:* `/deletetip 5`\n\n*Example:* `/deletetip 3`\n\nUse /viewtips to see tip numbers.', { parse_mode: 'Markdown' });
+        return;
+    }
+
+    const tipNumber = parseInt(parts[1]);
+    if (isNaN(tipNumber) || tipNumber < 1 || tipNumber > dailyTips.length) {
+        ctx.reply(`❌ Invalid tip number. Tips range from 1 to ${dailyTips.length}. Use /viewtips to see all.`);
+        return;
+    }
+
+    const deletedTip = dailyTips[tipNumber - 1];
+    
+    // Remove the tip
+    dailyTips.splice(tipNumber - 1, 1);
+    
+    // Save to tips.js file
+    const fs = require('fs');
+    const tipsContent = `// Nigeria Scam Detector - Daily Tips Database\n// Updated by admin on ${new Date().toLocaleString()}\n\nconst dailyTips = ${JSON.stringify(dailyTips, null, 4)};\n\nmodule.exports = { dailyTips };\n`;
+    
+    try {
+        fs.writeFileSync('tips.js', tipsContent);
+        ctx.reply(`✅ *TIP #${tipNumber} DELETED*\n\nDeleted tip: ${deletedTip.substring(0, 100)}...\n\nTotal tips remaining: ${dailyTips.length}`, { parse_mode: 'Markdown' });
+        console.log(`📝 Admin deleted tip #${tipNumber}`);
+    } catch (err) {
+        ctx.reply(`❌ Failed to save: ${err.message}`);
+    }
+});
+
+// Command: /tipsbackup - Download tips.js file
+bot.command('tipsbackup', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only command.');
+        return;
+    }
+
+    try {
+        if (!fs.existsSync('tips.js')) {
+            ctx.reply('❌ tips.js file not found.');
+            return;
+        }
+
+        ctx.replyWithDocument({ source: 'tips.js' }, {
+            caption: `💡 *TIPS BACKUP*\n📅 ${new Date().toLocaleString()}\n📊 Total tips: ${dailyTips.length}\n🤖 @JoshuaGiwaBot`,
+            parse_mode: 'Markdown'
+        });
+        console.log(`📥 Admin downloaded tips backup`);
+    } catch (err) {
+        ctx.reply(`❌ Error: ${err.message}`);
+    }
+});
+
 // Command: /recent - Show last 10 reported scammers
 bot.command('recent', (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
@@ -475,6 +687,34 @@ function scheduleDailyTip() {
 // Start the scheduler
 scheduleDailyTip();
 console.log('⏰ Daily tip scheduler started - will send to group at 8am Nigeria time');
+
+bot.command('adminhelp', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    
+    ctx.reply(`
+👑 *ADMIN COMMANDS*
+
+*Tip Management:*
+/viewtips - Show tip menu
+/viewtips list - List all tips
+/viewtips [number] - View specific tip
+/edittip [number] [text] - Edit a tip
+/addtip [text] - Add a new tip
+/deletetip [number] - Delete a tip
+/tipsbackup - Download tips.js file
+
+*Database Management:*
+/download - Download storage files
+/listscammers - View all scammers
+/recent - View last 10 scammers
+
+*Bot Management:*
+/adminhelp - Show this menu
+    `, { parse_mode: 'Markdown' });
+});
 
 // ========== KEEP RENDER AWAKE (Ping every 5 minutes) ==========
 
