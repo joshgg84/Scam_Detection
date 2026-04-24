@@ -74,7 +74,7 @@ function formatPhoneNumber(phone) {
 function checkNumberInDatabase(phoneNumber) {
     const scammers = getAllScammers();
     const normalized = normalizePhoneNumber(phoneNumber);
-    if (!normalized) return false;
+    
     
     return scammers.some(scammer => {
         const scammerNorm = normalizePhoneNumber(scammer);
