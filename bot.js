@@ -37,48 +37,18 @@ const STORAGE_FILES = [
 let tipSubscribers = []; // Kept for compatibility, but not used
 function saveTipSubscribers() {} // Empty function
 
-// ========== PHONE NUMBER NORMALIZATION ==========
-// Converts any phone number format to standard format for checking
-function normalizePhoneNumber(phone) {
-    // Remove any non-digit characters
-    let cleaned = phone.toString().replace(/\D/g, '');
-    
-    // Remove country code if present (234 or +234)
-    if (cleaned.startsWith('234')) {
-        cleaned = cleaned.substring(3);
-    }
-    
-    // Remove leading 0 if present (070 becomes 70)
-    if (cleaned.startsWith('0')) {
-        cleaned = cleaned.substring(1);
-    }
-    
-    // Ensure it starts with 70, 71, 80, 81, 90, 91 etc.
-    if (!cleaned.match(/^[789][01]\d{8}$/)) {
-        return null; // Invalid Nigerian number format
-    }
-    
-    return cleaned;
-}
-
-// Standard format for display (with leading 0)
-function formatPhoneNumber(phone) {
-    const normalized = normalizePhoneNumber(phone);
-    if (normalized) {
-        return '0' + normalized;
-    }
-    return phone;
-}
-
-// Check if a number is in the scammer database (handles different formats)
+// ========== PHONE NUMBER HANDLING (Accepts Everything) ==========
+// Check if a number is in the scammer database (any format works)
 function checkNumberInDatabase(phoneNumber) {
     const scammers = getAllScammers();
-    const normalized = normalizePhoneNumber(phoneNumber);
+    // Remove all non-digits for comparison
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
     
+    if (cleaned.length === 0) return false;
     
     return scammers.some(scammer => {
-        const scammerNorm = normalizePhoneNumber(scammer);
-        return scammerNorm === normalized;
+        const scammerCleaned = scammer.toString().replace(/\D/g, '');
+        return scammerCleaned === cleaned;
     });
 }
 
@@ -112,6 +82,8 @@ function getHelpMessage() {
 1. Forward any suspicious message to me
 2. I'll analyze it and show the risk level
 3. Report scammers to protect others
+
+*Any phone number format works!* (international, spaces, dashes, etc.)
 
 👥 *Join our community:* ${COMMUNITY_LINK}
 
@@ -186,12 +158,20 @@ function analyzeMessage(text) {
         riskScore += 15;
     }
 
-    const phoneMatch = text.match(/0[789][01]\d{8}/);
-    if (phoneMatch) {
-        const number = phoneMatch[0];
-        if (checkNumberInDatabase(number)) {
-            alerts.push(`🚨 ${number} is a REPORTED SCAMMER!`);
-            riskScore += 50;
+    // Look for phone numbers in various formats
+    const phonePatterns = [
+        /\+?\d[\d\s\-\(\)]{8,}\d/g  // Catches any phone number pattern
+    ];
+    
+    for (const pattern of phonePatterns) {
+        const matches = text.match(pattern);
+        if (matches) {
+            for (const number of matches) {
+                if (checkNumberInDatabase(number)) {
+                    alerts.push(`🚨 ${number} is a REPORTED SCAMMER!`);
+                    riskScore += 50;
+                }
+            }
         }
     }
 
@@ -230,17 +210,11 @@ bot.command('check', (ctx) => {
     let phoneNumber = parts[1];
 
     if (!phoneNumber) {
-        ctx.reply('📞 *Usage:* `/check 08012345678`\n\n*Examples:*\n/check 08012345678\n/check +2348012345678\n/check 07012345678', { parse_mode: 'Markdown' });
+        ctx.reply('📞 *Usage:* `/check 08012345678`\n\n*Any phone number format accepted*', { parse_mode: 'Markdown' });
         return;
     }
 
-    const normalized = normalizePhoneNumber(phoneNumber);
-    if (!normalized) {
-        ctx.reply(`❌ *Invalid Nigerian phone number:* ${phoneNumber}\n\nPlease use format like:\n08012345678\n+2348012345678\n07123456789`, { parse_mode: 'Markdown' });
-        return;
-    }
-
-    const formattedNumber = formatPhoneNumber(normalized);
+    const formattedNumber = phoneNumber.toString().trim();
     const reported = checkNumberInDatabase(formattedNumber);
 
     if (reported) {
@@ -257,17 +231,11 @@ bot.command('report', (ctx) => {
     const reporter = ctx.from.username || ctx.from.id.toString();
 
     if (!phoneNumber) {
-        ctx.reply('📞 *Usage:* `/report 08012345678 [reason]`\n\n*Example:* `/report 08012345678 Fake bank alert`', { parse_mode: 'Markdown' });
+        ctx.reply('📞 *Usage:* `/report 08012345678 [reason]`\n\n*Any phone number format accepted*', { parse_mode: 'Markdown' });
         return;
     }
 
-    const normalized = normalizePhoneNumber(phoneNumber);
-    if (!normalized) {
-        ctx.reply(`❌ *Invalid phone number:* ${phoneNumber}\n\nPlease use format like: 08012345678`, { parse_mode: 'Markdown' });
-        return;
-    }
-
-    const formattedNumber = formatPhoneNumber(normalized);
+    const formattedNumber = phoneNumber.toString().trim();
 
     if (checkNumberInDatabase(formattedNumber)) {
         ctx.reply(`⚠️ *Already Reported*\n\n${formattedNumber} is already in our scammer database.`, { parse_mode: 'Markdown' });
@@ -539,6 +507,13 @@ if (process.env.PORT) {
     console.log("⏰ Ping system active - pinging every 5 minutes to prevent sleep");
 }
 
+// ========== CLEAN START (Prevent 409 Conflict) ==========
+bot.telegram.deleteWebhook().then(() => {
+    console.log('✅ Webhook deleted, starting fresh');
+}).catch(err => {
+    console.log('No webhook to delete');
+});
+
 // ========== LAUNCH ==========
 bot.launch().then(() => {
     console.log('========================================');
@@ -549,10 +524,22 @@ bot.launch().then(() => {
     console.log(`📰 Daily tips will be sent to group at 8am Nigeria time`);
     console.log('⏰ Ping system active every 5 minutes');
     console.log('========================================');
+}).catch((err) => {
+    console.error('❌ LAUNCH FAILED:', err);
+    process.exit(1);
+});
+
+// Global error handlers
+process.on('uncaughtException', (err) => {
+    console.error('❌ UNCAUGHT EXCEPTION:', err);
+});
+
+process.on('unhandledRejection', (err) {
+    console.error('❌ UNHANDLED REJECTION:', err);
 });
 
 bot.catch((err, ctx) => {
-    console.error('Error:', err);
+    console.error('Bot error:', err);
     ctx.reply('⚠️ Error occurred. Try again.');
 });
 
