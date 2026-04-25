@@ -197,6 +197,10 @@ function analyzeMessage(text) {
 }
 
 // ========== COMMANDS ==========
+// Temporary command to check your ID
+bot.command('myid', (ctx) => {
+    ctx.reply(`Your Telegram ID is: \`${ctx.from.id}\``, { parse_mode: 'Markdown' });
+});
 
 // Start command - Shows help message
 bot.start((ctx) => {
