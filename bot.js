@@ -59,6 +59,9 @@ function getHelpMessage() {
 
 *Creator:* Joshua Giwa
 
+⏰ *Note:* First message may take 20-30 seconds to wake me up.
+After that, I respond instantly. Thanks for your patience! 🇳🇬
+
 *Detection Commands:*
 /check [number] - Check if a number is reported
 /report [number] - Report a scammer
