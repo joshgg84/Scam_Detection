@@ -33,26 +33,21 @@ const STORAGE_FILES = [
 ];
 
 // ========== DATA FILES ==========
-// Note: tipsubscribers.json is no longer used. Tips go to group only.
-let tipSubscribers = []; // Kept for compatibility, but not used
-function saveTipSubscribers() {} // Empty function
+let tipSubscribers = [];
+function saveTipSubscribers() {}
 
-// ========== PHONE NUMBER HANDLING (Accepts Everything) ==========
-// Check if a number is in the scammer database (any format works)
+// ========== PHONE NUMBER HANDLING ==========
 function checkNumberInDatabase(phoneNumber) {
     const scammers = getAllScammers();
-    // Remove all non-digits for comparison
     const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    
     if (cleaned.length === 0) return false;
-    
     return scammers.some(scammer => {
         const scammerCleaned = scammer.toString().replace(/\D/g, '');
         return scammerCleaned === cleaned;
     });
 }
 
-// ========== HELP MESSAGE (Reused for /start and /help) ==========
+// ========== HELP MESSAGE ==========
 function getHelpMessage() {
     return `
 📚 *NIGERIA SCAM DETECTOR - HELP*
@@ -67,7 +62,7 @@ After that, I respond instantly. Thanks for your patience! 🇳🇬
 /report [number] - Report a scammer
 
 *Education Commands:*
-/scamtypes - Learn common scams in Nigeria
+/scamtypes - Learn common scams
 /redflags - Words that signal a scam
 /whattodo - Steps if you've been scammed
 /tips - Get a random security tip
@@ -81,12 +76,19 @@ After that, I respond instantly. Thanks for your patience! 🇳🇬
 /start - Show this menu
 /help - Show this menu
 
+*Admin Commands (Bot Owner Only):*
+/adminhelp - Show admin menu
+/listscammers - View all reported scammers
+/recent - View recent reports
+/download - Backup database files
+/viewtips - Manage security tips
+
 *How to use:*
 1. Forward any suspicious message to me
 2. I'll analyze it and show the risk level
 3. Report scammers to protect others
 
-*Any phone number format works!* (international, spaces, dashes, etc.)
+*Any phone number format works!*
 
 👥 *Join our community:* ${COMMUNITY_LINK}
 
@@ -161,9 +163,8 @@ function analyzeMessage(text) {
         riskScore += 15;
     }
 
-    // Look for phone numbers in various formats
     const phonePatterns = [
-        /\+?\d[\d\s\-\(\)]{8,}\d/g  // Catches any phone number pattern
+        /\+?\d[\d\s\-\(\)]{8,}\d/g
     ];
     
     for (const pattern of phonePatterns) {
@@ -196,20 +197,18 @@ function analyzeMessage(text) {
     return { riskLevel, emoji, riskScore, alerts, recommendation };
 }
 
-// ========== COMMANDS ==========
-// Temporary command to check your ID
-bot.command('myid', (ctx) => {
-    ctx.reply(`Your Telegram ID is: \`${ctx.from.id}\``, { parse_mode: 'Markdown' });
-});
+// ========== PUBLIC COMMANDS ==========
 
-// Start command - Shows help message
 bot.start((ctx) => {
     ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' });
 });
 
-// Help command - Same as start
 bot.command('help', (ctx) => {
     ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' });
+});
+
+bot.command('myid', (ctx) => {
+    ctx.reply(`Your Telegram ID is: \`${ctx.from.id}\``, { parse_mode: 'Markdown' });
 });
 
 bot.command('check', (ctx) => {
@@ -273,6 +272,7 @@ No approval needed. Everyone welcome!
 🇳🇬 Together we fight fraud.
     `, { parse_mode: 'Markdown' });
 });
+
 bot.command('howtoreport', (ctx) => {
     ctx.reply(`
 📢 *HOW TO REPORT A SCAM*
@@ -346,26 +346,82 @@ Any amount helps! 🇳🇬
     `, { parse_mode: 'Markdown' });
 });
 
-// Auto-analyze messages
-bot.on('text', async (ctx) => {
-    const message = ctx.message.text;
-    if (message.startsWith('/')) return;
+// ========== ADMIN COMMANDS ==========
 
-    const analysis = analyzeMessage(message);
-
-    if (analysis.riskScore >= 20) {
-        let response = `${analysis.emoji} *${analysis.riskLevel} RISK* ${analysis.emoji}\n\n`;
-        response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
-        response += `*Action:* ${analysis.recommendation}\n\n`;
-        response += `👥 *Join our community for help:* ${COMMUNITY_LINK}`;
-
-        ctx.reply(response, { parse_mode: 'Markdown' });
+bot.command('adminhelp', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
     }
+    
+    ctx.reply(`
+👑 *ADMIN COMMANDS*
+
+*Tip Management:*
+/viewtips - Show tip menu
+/viewtips list - List all tips
+/viewtips [number] - View specific tip
+/edittip [number] [text] - Edit a tip
+/addtip [text] - Add a new tip
+/deletetip [number] - Delete a tip
+/tipsbackup - Download tips.js file
+
+*Database Management:*
+/download - Download storage files
+/listscammers - View all scammers
+/recent - View last 10 scammers
+
+*Your Info:*
+Admin ID: ${YOUR_ID}
+    `, { parse_mode: 'Markdown' });
 });
 
-// ========== ADMIN ONLY COMMANDS ==========
+bot.command('listscammers', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
 
-// Command: /download - Show available files
+    const scammers = getAllScammers();
+    
+    if (scammers.length === 0) {
+        ctx.reply('📋 No scammers reported yet.');
+        return;
+    }
+
+    let message = `📋 *REPORTED SCAMMERS (${scammers.length})*\n\n`;
+    for (let i = 0; i < Math.min(30, scammers.length); i++) {
+        message += `${i+1}. ${scammers[i]}\n`;
+    }
+    
+    if (scammers.length > 30) {
+        message += `\n...and ${scammers.length - 30} more.`;
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+bot.command('recent', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+
+    const recent = getRecentScammers(10);
+    
+    if (recent.length === 0) {
+        ctx.reply('No scammers reported yet.');
+        return;
+    }
+
+    let message = `📋 *RECENT SCAMMERS (last ${recent.length})*\n\n`;
+    for (let i = 0; i < recent.length; i++) {
+        message += `${i+1}. ${recent[i]}\n`;
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
 bot.command('download', (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only command.');
@@ -420,33 +476,6 @@ bot.command('download', (ctx) => {
     }
 });
 
-// Command: /listscammers - Show all reported scammers
-bot.command('listscammers', (ctx) => {
-    if (ctx.from.id !== YOUR_ID) {
-        ctx.reply('❌ Admin only.');
-        return;
-    }
-
-    const scammers = getAllScammers();
-    
-    if (scammers.length === 0) {
-        ctx.reply('No scammers reported yet.');
-        return;
-    }
-
-    let message = `📋 *REPORTED SCAMMERS (${scammers.length})*\n\n`;
-    for (let i = 0; i < Math.min(30, scammers.length); i++) {
-        message += `${i+1}. ${scammers[i]}\n`;
-    }
-    
-    if (scammers.length > 30) {
-        message += `\n...and ${scammers.length - 30} more.`;
-    }
-    
-    ctx.reply(message, { parse_mode: 'Markdown' });
-});
-
-// Command: /viewtips - Show all tips
 bot.command('viewtips', (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only command.');
@@ -455,7 +484,6 @@ bot.command('viewtips', (ctx) => {
 
     const args = ctx.message.text.split(' ');
     
-    // /viewtips - Show summary
     if (args.length === 1) {
         let message = `💡 *TIPS DATABASE*\n\n`;
         message += `Total tips: ${dailyTips.length}\n`;
@@ -471,7 +499,6 @@ bot.command('viewtips', (ctx) => {
         return;
     }
     
-    // /viewtips list - Show all tips (paginated)
     if (args[1] === 'list') {
         let allTips = "";
         for (let i = 0; i < dailyTips.length; i++) {
@@ -479,7 +506,6 @@ bot.command('viewtips', (ctx) => {
             allTips += `${i+1}. ${tipText}...\n`;
         }
         
-        // Split into multiple messages if too long
         const chunks = allTips.match(/[\s\S]{1,3800}/g) || [];
         
         ctx.reply(`💡 *ALL TIPS (${dailyTips.length})*\n\n${chunks[0]}`, { parse_mode: 'Markdown' });
@@ -490,7 +516,6 @@ bot.command('viewtips', (ctx) => {
         return;
     }
     
-    // /viewtips [number] - Show specific tip
     const tipNumber = parseInt(args[1]);
     if (!isNaN(tipNumber) && tipNumber >= 1 && tipNumber <= dailyTips.length) {
         const tip = dailyTips[tipNumber - 1];
@@ -501,7 +526,6 @@ bot.command('viewtips', (ctx) => {
     ctx.reply(`❌ Invalid. Use /viewtips list or /viewtips [1-${dailyTips.length}]`);
 });
 
-// Command: /edittip [number] [new text] - Edit a tip
 bot.command('edittip', async (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only command.');
@@ -510,38 +534,31 @@ bot.command('edittip', async (ctx) => {
 
     const parts = ctx.message.text.split(' ');
     if (parts.length < 3) {
-        ctx.reply('📝 *Usage:* `/edittip 5 Your new tip text here`\n\n*Example:* `/edittip 3 Never share your OTP with anyone!`', { parse_mode: 'Markdown' });
+        ctx.reply('📝 *Usage:* `/edittip 5 Your new tip text here`', { parse_mode: 'Markdown' });
         return;
     }
 
     const tipNumber = parseInt(parts[1]);
     if (isNaN(tipNumber) || tipNumber < 1 || tipNumber > dailyTips.length) {
-        ctx.reply(`❌ Invalid tip number. Tips range from 1 to ${dailyTips.length}. Use /viewtips to see all.`);
+        ctx.reply(`❌ Invalid tip number. Tips range from 1 to ${dailyTips.length}.`);
         return;
     }
 
     const newTip = parts.slice(2).join(' ');
-    
-    // Store old tip for confirmation
     const oldTip = dailyTips[tipNumber - 1];
     
-    // Update the tip
     dailyTips[tipNumber - 1] = newTip;
     
-    // Save to tips.js file
-    const fs = require('fs');
     const tipsContent = `// Nigeria Scam Detector - Daily Tips Database\n// Updated by admin on ${new Date().toLocaleString()}\n\nconst dailyTips = ${JSON.stringify(dailyTips, null, 4)};\n\nmodule.exports = { dailyTips };\n`;
     
     try {
         fs.writeFileSync('tips.js', tipsContent);
-        ctx.reply(`✅ *TIP #${tipNumber} UPDATED*\n\n*Old:* ${oldTip.substring(0, 100)}...\n\n*New:* ${newTip.substring(0, 100)}...\n\nChanges saved to tips.js`, { parse_mode: 'Markdown' });
-        console.log(`📝 Admin edited tip #${tipNumber}`);
+        ctx.reply(`✅ *TIP #${tipNumber} UPDATED*\n\n*Old:* ${oldTip.substring(0, 100)}...\n\n*New:* ${newTip.substring(0, 100)}...`, { parse_mode: 'Markdown' });
     } catch (err) {
         ctx.reply(`❌ Failed to save: ${err.message}`);
     }
 });
 
-// Command: /addtip [new tip] - Add a new tip
 bot.command('addtip', async (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only command.');
@@ -550,29 +567,23 @@ bot.command('addtip', async (ctx) => {
 
     const parts = ctx.message.text.split(' ');
     if (parts.length < 2) {
-        ctx.reply('📝 *Usage:* `/addtip Your new security tip here`\n\n*Example:* `/addtip Never share your BVN with anyone online`', { parse_mode: 'Markdown' });
+        ctx.reply('📝 *Usage:* `/addtip Your new security tip here`', { parse_mode: 'Markdown' });
         return;
     }
 
     const newTip = parts.slice(1).join(' ');
-    
-    // Add to array
     dailyTips.push(newTip);
     
-    // Save to tips.js file
-    const fs = require('fs');
     const tipsContent = `// Nigeria Scam Detector - Daily Tips Database\n// Updated by admin on ${new Date().toLocaleString()}\n\nconst dailyTips = ${JSON.stringify(dailyTips, null, 4)};\n\nmodule.exports = { dailyTips };\n`;
     
     try {
         fs.writeFileSync('tips.js', tipsContent);
-        ctx.reply(`✅ *NEW TIP ADDED*\n\nTip #${dailyTips.length}: ${newTip}\n\nTotal tips: ${dailyTips.length}\n\n*To edit:* /edittip ${dailyTips.length} [new text]`, { parse_mode: 'Markdown' });
-        console.log(`📝 Admin added new tip #${dailyTips.length}`);
+        ctx.reply(`✅ *NEW TIP ADDED*\n\nTip #${dailyTips.length}: ${newTip}\n\nTotal tips: ${dailyTips.length}`, { parse_mode: 'Markdown' });
     } catch (err) {
         ctx.reply(`❌ Failed to save: ${err.message}`);
     }
 });
 
-// Command: /deletetip [number] - Delete a tip
 bot.command('deletetip', async (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only command.');
@@ -581,35 +592,29 @@ bot.command('deletetip', async (ctx) => {
 
     const parts = ctx.message.text.split(' ');
     if (parts.length < 2) {
-        ctx.reply('📝 *Usage:* `/deletetip 5`\n\n*Example:* `/deletetip 3`\n\nUse /viewtips to see tip numbers.', { parse_mode: 'Markdown' });
+        ctx.reply('📝 *Usage:* `/deletetip 5`', { parse_mode: 'Markdown' });
         return;
     }
 
     const tipNumber = parseInt(parts[1]);
     if (isNaN(tipNumber) || tipNumber < 1 || tipNumber > dailyTips.length) {
-        ctx.reply(`❌ Invalid tip number. Tips range from 1 to ${dailyTips.length}. Use /viewtips to see all.`);
+        ctx.reply(`❌ Invalid tip number. Tips range from 1 to ${dailyTips.length}.`);
         return;
     }
 
     const deletedTip = dailyTips[tipNumber - 1];
-    
-    // Remove the tip
     dailyTips.splice(tipNumber - 1, 1);
     
-    // Save to tips.js file
-    const fs = require('fs');
     const tipsContent = `// Nigeria Scam Detector - Daily Tips Database\n// Updated by admin on ${new Date().toLocaleString()}\n\nconst dailyTips = ${JSON.stringify(dailyTips, null, 4)};\n\nmodule.exports = { dailyTips };\n`;
     
     try {
         fs.writeFileSync('tips.js', tipsContent);
-        ctx.reply(`✅ *TIP #${tipNumber} DELETED*\n\nDeleted tip: ${deletedTip.substring(0, 100)}...\n\nTotal tips remaining: ${dailyTips.length}`, { parse_mode: 'Markdown' });
-        console.log(`📝 Admin deleted tip #${tipNumber}`);
+        ctx.reply(`✅ *TIP #${tipNumber} DELETED*\n\nDeleted: ${deletedTip.substring(0, 100)}...\n\nTotal tips remaining: ${dailyTips.length}`, { parse_mode: 'Markdown' });
     } catch (err) {
         ctx.reply(`❌ Failed to save: ${err.message}`);
     }
 });
 
-// Command: /tipsbackup - Download tips.js file
 bot.command('tipsbackup', (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only command.');
@@ -623,42 +628,33 @@ bot.command('tipsbackup', (ctx) => {
         }
 
         ctx.replyWithDocument({ source: 'tips.js' }, {
-            caption: `💡 *TIPS BACKUP*\n📅 ${new Date().toLocaleString()}\n📊 Total tips: ${dailyTips.length}\n🤖 @JoshuaGiwaBot`,
+            caption: `💡 *TIPS BACKUP*\n📅 ${new Date().toLocaleString()}\n📊 Total tips: ${dailyTips.length}`,
             parse_mode: 'Markdown'
         });
-        console.log(`📥 Admin downloaded tips backup`);
     } catch (err) {
         ctx.reply(`❌ Error: ${err.message}`);
     }
 });
 
-// Command: /recent - Show last 10 reported scammers
-bot.command('recent', (ctx) => {
-    if (ctx.from.id !== YOUR_ID) {
-        ctx.reply('❌ Admin only.');
-        return;
-    }
+// ========== AUTO-ANALYZE MESSAGES ==========
+bot.on('text', async (ctx) => {
+    const message = ctx.message.text;
+    if (message.startsWith('/')) return;
 
-    const recent = getRecentScammers(10);
-    
-    if (recent.length === 0) {
-        ctx.reply('No scammers reported yet.');
-        return;
-    }
+    const analysis = analyzeMessage(message);
 
-    let message = `📋 *RECENT SCAMMERS (last ${recent.length})*\n\n`;
-    for (let i = 0; i < recent.length; i++) {
-        message += `${i+1}. ${recent[i]}\n`;
+    if (analysis.riskScore >= 20) {
+        let response = `${analysis.emoji} *${analysis.riskLevel} RISK* ${analysis.emoji}\n\n`;
+        response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
+        response += `*Action:* ${analysis.recommendation}\n\n`;
+        response += `👥 *Join our community for help:* ${COMMUNITY_LINK}`;
+
+        ctx.reply(response, { parse_mode: 'Markdown' });
     }
-    
-    ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
-// ========== DAILY TIPS (Send to Group Only) ==========
-
-// Function to send daily tip to group
+// ========== DAILY TIPS TO GROUP ==========
 async function sendDailyTipToGroup() {
-    // Get today's tip based on date
     const today = new Date();
     const nigeriaTime = new Date(today.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
     const dayOfMonth = nigeriaTime.getDate();
@@ -675,57 +671,23 @@ async function sendDailyTipToGroup() {
     }
 }
 
-// Schedule: Check every minute, send at 8:00 AM Nigeria time
 function scheduleDailyTip() {
     const now = new Date();
     const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
     const currentHour = nigeriaTime.getHours();
     const currentMinute = nigeriaTime.getMinutes();
     
-    // Send at 8:00 AM
     if (currentHour === 8 && currentMinute === 0) {
         sendDailyTipToGroup();
     }
     
-    // Check again in 60 seconds
     setTimeout(scheduleDailyTip, 60 * 1000);
 }
 
-// Start the scheduler
 scheduleDailyTip();
 console.log('⏰ Daily tip scheduler started - will send to group at 8am Nigeria time');
 
-bot.command('adminhelp', (ctx) => {
-    if (ctx.from.id !== YOUR_ID) {
-        ctx.reply('❌ Admin only.');
-        return;
-    }
-    
-    ctx.reply(`
-👑 *ADMIN COMMANDS*
-
-*Tip Management:*
-/viewtips - Show tip menu
-/viewtips list - List all tips
-/viewtips [number] - View specific tip
-/edittip [number] [text] - Edit a tip
-/addtip [text] - Add a new tip
-/deletetip [number] - Delete a tip
-/tipsbackup - Download tips.js file
-
-*Database Management:*
-/download - Download storage files
-/listscammers - View all scammers
-/recent - View last 10 scammers
-
-*Bot Management:*
-/adminhelp - Show this menu
-    `, { parse_mode: 'Markdown' });
-});
-
-// ========== KEEP RENDER AWAKE (Ping every 5 minutes) ==========
-
-// Simple web server for Render health checks
+// ========== WEB SERVER FOR HEALTH CHECKS ==========
 const PORT = process.env.PORT || 3000;
 if (process.env.PORT) {
     const express = require('express');
@@ -734,27 +696,20 @@ if (process.env.PORT) {
     app.listen(PORT, () => console.log(`Web server running on port ${PORT}`));
 }
 
-// Function to ping silently every 5 minutes
+// ========== PING SYSTEM ==========
 async function pingSelf() {
-    const PING_INTERVAL = 5 * 60 * 1000; // 5 minutes
-    
+    const PING_INTERVAL = 5 * 60 * 1000;
     setInterval(async () => {
-        try {
-            // Silent ping - just logs to console
-            console.log(`🔄 Self-ping at ${new Date().toLocaleTimeString()}`);
-        } catch (err) {
-            console.log("❌ Self-ping failed:", err.message);
-        }
+        console.log(`🔄 Self-ping at ${new Date().toLocaleTimeString()}`);
     }, PING_INTERVAL);
 }
 
-// Start ping system only on Render
 if (process.env.PORT) {
     pingSelf();
-    console.log("⏰ Ping system active - pinging every 5 minutes to prevent sleep");
+    console.log("⏰ Ping system active - pinging every 5 minutes");
 }
 
-// ========== CLEAN START (Prevent 409 Conflict) ==========
+// ========== CLEAN START ==========
 bot.telegram.deleteWebhook().then(() => {
     console.log('✅ Webhook deleted, starting fresh');
 }).catch(err => {
@@ -768,15 +723,13 @@ bot.launch().then(() => {
     console.log('👑 Creator: Joshua Giwa');
     console.log(`📊 ${getScammerCount()} scammers reported`);
     console.log(`👥 Community: ${COMMUNITY_LINK}`);
-    console.log(`📰 Daily tips will be sent to group at 8am Nigeria time`);
-    console.log('⏰ Ping system active every 5 minutes');
     console.log('========================================');
 }).catch((err) => {
     console.error('❌ LAUNCH FAILED:', err);
     process.exit(1);
 });
 
-// Global error handlers
+// ========== ERROR HANDLERS ==========
 process.on('uncaughtException', (err) => {
     console.error('❌ UNCAUGHT EXCEPTION:', err);
 });
