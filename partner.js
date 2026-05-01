@@ -1,7 +1,5 @@
 // partner.js - Complete Partner System Module
 // Creator: Joshua Giwa
-// Handles: /partner, /partners, /approve, /reject, /verify, /find, /pending
-// Features: Round-robin featured partners, CTA buttons, payment tracking
 
 const fs = require('fs');
 
@@ -89,15 +87,6 @@ function getPendingByUserId(userId) {
     return pendingPartners.find(p => p.userId === userId);
 }
 
-function getPartnerById(id) {
-    return partners.find(p => p.id === id);
-}
-
-function getPartnersByCategory(category) {
-    if (category === 'all') return partners;
-    return partners.filter(p => p.category.toLowerCase() === category.toLowerCase());
-}
-
 function getUserConversation(userId) {
     if (!conversationState[userId]) {
         conversationState[userId] = { step: 'idle', data: {} };
@@ -118,72 +107,72 @@ function clearConversation(userId) {
 // ========== ROUND-ROBIN FOR FEATURED PARTNERS ==========
 function getNextFeaturedPartner() {
     const featured = partners.filter(p => p.featured === true && p.status === 'approved');
-    
     if (featured.length === 0) return null;
-    
     const partner = featured[currentFeaturedIndex % featured.length];
     currentFeaturedIndex++;
-    
     return partner;
-}
-
-function resetFeaturedIndex() {
-    currentFeaturedIndex = 0;
 }
 
 // ========== CTA BUTTONS ==========
 function getPartnerButtons(partner) {
     const buttons = [];
-    
     if (partner.contactType === 'telegram' || partner.contactType === 'both') {
         let username = partner.contact;
         if (username.startsWith('@')) username = username.substring(1);
         buttons.push([{ text: '💬 Message Partner', url: `https://t.me/${username}` }]);
     }
-    
     if (partner.contactType === 'phone' || partner.contactType === 'both') {
         let phone = partner.contact;
         if (partner.phoneNumber) phone = partner.phoneNumber;
         phone = phone.replace(/\D/g, '');
         buttons.push([{ text: '📞 Call Partner', url: `tel:${phone}` }]);
     }
-    
-    if (partner.website) {
-        buttons.push([{ text: '🌐 Visit Website', url: partner.website }]);
-    }
-    
     return buttons;
 }
 
-// ========== FORMAT PARTNERS LIST ==========
-function formatPartnersListWithButtons() {
-    if (partners.length === 0) return null;
-    
-    let message = `🤝 *OUR TRUSTED PARTNERS*\n\n`;
-    const featured = partners.filter(p => p.featured === true);
-    const normal = partners.filter(p => p.featured !== true);
-    
-    for (let p of featured) {
-        message += `⭐ *${p.businessName}* (${p.category}) [FEATURED]\n`;
-        if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
-        message += `   📞 ${p.contact}\n\n`;
+// ========== DISPLAY PARTNERS LIST ==========
+function displayPartnersList(ctx) {
+    try {
+        let partnersList = [];
+        if (fs.existsSync(PARTNERS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(PARTNERS_FILE, 'utf8'));
+            partnersList = data.partners || [];
+        }
+        
+        if (partnersList.length === 0) {
+            ctx.reply(`🤝 *NO PARTNERS YET*\n\nBe the first to register!\n\nType /partner to start.`, { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        let message = `🤝 *OUR TRUSTED PARTNERS*\n\n`;
+        const featured = partnersList.filter(p => p.featured === true);
+        const normal = partnersList.filter(p => p.featured !== true);
+        
+        for (let p of featured) {
+            message += `⭐ *${p.businessName}* (${p.category}) [FEATURED]\n`;
+            if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
+            message += `   📞 ${p.contact}\n\n`;
+        }
+        
+        let count = 1;
+        for (let p of normal) {
+            message += `${count}. *${p.businessName}* (${p.category})\n`;
+            if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
+            message += `   📞 ${p.contact}\n\n`;
+            count++;
+        }
+        
+        message += `📊 *Total:* ${partnersList.length} partners\n\n`;
+        message += `Type /partner to return to menu.`;
+        
+        ctx.reply(message, { parse_mode: 'Markdown' });
+    } catch (err) {
+        console.error('Display partners error:', err);
+        ctx.reply(`⚠️ Error loading partners. Try again later.`);
     }
-    
-    let count = 1;
-    for (let p of normal) {
-        message += `${count}. *${p.businessName}* (${p.category})\n`;
-        if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
-        message += `   📞 ${p.contact}\n\n`;
-        count++;
-    }
-    
-    message += `📊 *Total:* ${partners.length} partners\n\n`;
-    message += `📞 *Want to register your business?* Type /partner`;
-    
-    return message;
 }
 
-// ========== REGISTER PARTNER COMMAND HANDLER ==========
+// ========== MAIN PARTNER COMMAND HANDLER ==========
 async function handlePartnerCommand(ctx, COMMUNITY_LINK, YOUR_ID, bot) {
     const userId = ctx.from.id;
     const text = ctx.message.text;
@@ -243,8 +232,6 @@ Thank you! Your business will receive:
 ⏳ Admin will verify your payment within 24 hours.
 
 *Type /partner status anytime to check.*
-
-Need help? Contact @JoshuaGiwa
         `, { parse_mode: 'Markdown' });
         return;
     }
@@ -261,11 +248,8 @@ Need help? Contact @JoshuaGiwa
             if (existingPartner.featured) {
                 message += `Plan: Featured (${existingPartner.plan === 'week' ? '1 week' : '1 month'})\n`;
                 message += `Featured until: ${existingPartner.featuredExpiry}\n`;
-                message += `⭐ Your business appears at the TOP of /partners list.\n`;
-                message += `⭐ Your business appears in EVERY /check response.\n`;
             } else {
                 message += `Plan: Free\n`;
-                message += `To upgrade to featured: Contact @JoshuaGiwa\n`;
             }
             ctx.reply(message, { parse_mode: 'Markdown' });
             return;
@@ -301,6 +285,7 @@ Need help? Contact @JoshuaGiwa
     // Full partner menu system
     const conv = getUserConversation(userId);
     
+    // IDLE STATE - First time user types /partner
     if (conv.step === 'idle') {
         updateConversation(userId, 'main_menu');
         ctx.reply(`
@@ -315,38 +300,37 @@ Welcome to Nigeria Security Hub Partner Directory.
 3️⃣ *Register my business*
 4️⃣ *My status*
 
-*Reply with a number (1-4)*
+*Type 1, 2, 3, or 4:*
         `);
         return;
     }
     
+    // MAIN MENU - User chose a number
     if (conv.step === 'main_menu') {
         const choice = ctx.message.text.trim();
         
+        // OPTION 1: View all partners
         if (choice === '1') {
             clearConversation(userId);
-            const list = formatPartnersListWithButtons();
-            if (!list) {
-                ctx.reply(`🤝 *NO PARTNERS YET*\n\nBe the first to register!\n\nType /partner to start.`);
-            } else {
-                ctx.reply(list, { parse_mode: 'Markdown' });
-            }
+            displayPartnersList(ctx);
             return;
         }
         
+        // OPTION 2: Search by category
         if (choice === '2') {
             updateConversation(userId, 'search_category');
             ctx.reply(`
 📂 *SEARCH BY CATEGORY*
 
 *Categories:*
-${settings.categories.join(', ')}
+tech, finance, realestate, legal, services, shop, education, healthcare, automotive, agriculture, logistics, hospitality, other
 
-*Reply with a category:*
+*Type a category:*
             `);
             return;
         }
         
+        // OPTION 3: Register my business
         if (choice === '3') {
             const existing = getPartnerByUserId(userId);
             if (existing) {
@@ -358,48 +342,54 @@ ${settings.categories.join(', ')}
             ctx.reply(`
 📝 *Choose your plan:*
 
-⭐ *FEATURED (1 week)* — ₦${settings.featuredPriceWeek}
-✅ Appears at TOP of /partners list
-✅ Appears in EVERY /check response (round-robin)
-✅ Mentioned in daily security tips (7 days)
-✅ Priority support
-✅ "⭐ Featured" badge
+⭐ *FEATURED (1 week)* — ₦15,000
+✅ Top of /partners list
+✅ Appears in every /check response
+✅ Mentioned in daily tips (7 days)
 
-⭐ *FEATURED (1 month)* — ₦${settings.featuredPriceMonth}
-✅ Appears at TOP of /partners list
-✅ Appears in EVERY /check response (round-robin)
-✅ Mentioned in daily security tips (30 days)
-✅ Priority support
-✅ "⭐ Featured" badge
-✅ Longer exposure, better value
+⭐ *FEATURED (1 month)* — ₦50,000
+✅ Top of /partners list
+✅ Appears in every /check response
+✅ Mentioned in daily tips (30 days)
 
 🟢 *FREE* — ₦0
 ✅ Basic listing in /partners
 
-*Reply A, B, or C:*
+*Type A, B, or C:*
             `);
             return;
         }
         
+        // OPTION 4: My status
         if (choice === '4') {
             clearConversation(userId);
             ctx.reply(`Type /partner status to check your registration status.`);
             return;
         }
         
-        ctx.reply(`Invalid choice. Reply 1, 2, 3, or 4.`);
+        // Invalid choice
+        ctx.reply(`❌ Invalid choice. Type 1, 2, 3, or 4.`);
         return;
     }
     
+    // SEARCH CATEGORY
     if (conv.step === 'search_category') {
         const category = ctx.message.text.trim().toLowerCase();
+        const valid = ['tech', 'finance', 'realestate', 'legal', 'services', 'shop', 'education', 'healthcare', 'automotive', 'agriculture', 'logistics', 'hospitality', 'other'];
         
-        if (!settings.categories.includes(category)) {
-            ctx.reply(`❌ Invalid category. Try: ${settings.categories.join(', ')}`);
+        if (!valid.includes(category)) {
+            ctx.reply(`❌ Invalid category. Try: tech, finance, realestate, legal, services, shop, education, healthcare, automotive, agriculture, logistics, hospitality, other`);
             return;
         }
         
-        const filtered = getPartnersByCategory(category);
+        let partnersList = [];
+        if (fs.existsSync(PARTNERS_FILE)) {
+            const data = JSON.parse(fs.readFileSync(PARTNERS_FILE, 'utf8'));
+            partnersList = data.partners || [];
+        }
+        
+        const filtered = partnersList.filter(p => p.category === category);
+        
         if (filtered.length === 0) {
             ctx.reply(`🤝 No partners found in *${category}*.\n\nBe the first! Type /partner to register.`, { parse_mode: 'Markdown' });
         } else {
@@ -413,6 +403,7 @@ ${settings.categories.join(', ')}
         return;
     }
     
+    // CHOOSE PLAN
     if (conv.step === 'choose_plan') {
         const choice = ctx.message.text.trim().toUpperCase();
         let plan, amount;
@@ -420,7 +411,7 @@ ${settings.categories.join(', ')}
         else if (choice === 'B') { plan = 'week'; amount = settings.featuredPriceWeek; }
         else if (choice === 'C') { plan = 'month'; amount = settings.featuredPriceMonth; }
         else {
-            ctx.reply(`❌ Invalid. Reply A, B, or C.`);
+            ctx.reply(`❌ Invalid. Type A, B, or C.`);
             return;
         }
         
@@ -429,18 +420,20 @@ ${settings.categories.join(', ')}
         updateConversation(userId, 'choose_category', conv.data);
         ctx.reply(`
 📂 *Category:*
-${settings.categories.join(', ')}
+tech, finance, realestate, legal, services, shop, education, healthcare, automotive, agriculture, logistics, hospitality, other
 
-*Reply with a category:*
+*Type a category:*
         `);
         return;
     }
     
+    // CHOOSE CATEGORY
     if (conv.step === 'choose_category') {
         const category = ctx.message.text.trim().toLowerCase();
+        const valid = ['tech', 'finance', 'realestate', 'legal', 'services', 'shop', 'education', 'healthcare', 'automotive', 'agriculture', 'logistics', 'hospitality', 'other'];
         
-        if (!settings.categories.includes(category)) {
-            ctx.reply(`❌ Invalid. Try: ${settings.categories.join(', ')}`);
+        if (!valid.includes(category)) {
+            ctx.reply(`❌ Invalid. Try: tech, finance, realestate, legal, services, shop, education, healthcare, automotive, agriculture, logistics, hospitality, other`);
             return;
         }
         
@@ -450,6 +443,7 @@ ${settings.categories.join(', ')}
         return;
     }
     
+    // CHOOSE NAME
     if (conv.step === 'choose_name') {
         conv.data.businessName = ctx.message.text.trim();
         updateConversation(userId, 'choose_description', conv.data);
@@ -457,6 +451,7 @@ ${settings.categories.join(', ')}
         return;
     }
     
+    // CHOOSE DESCRIPTION
     if (conv.step === 'choose_description') {
         let desc = ctx.message.text.trim();
         if (desc.length > 200) desc = desc.substring(0, 197) + '...';
@@ -466,42 +461,10 @@ ${settings.categories.join(', ')}
         return;
     }
     
+    // CHOOSE CONTACT
     if (conv.step === 'choose_contact') {
         conv.data.contact = ctx.message.text.trim();
-        updateConversation(userId, 'choose_contact_type', conv.data);
-        ctx.reply(`
-📞 *How should customers contact you?*
-
-A) Telegram username (opens chat)
-B) Phone number (shows call button)
-C) Both (both buttons)
-
-*Reply A, B, or C:*
-        `);
-        return;
-    }
-    
-    if (conv.step === 'choose_contact_type') {
-        const choice = ctx.message.text.trim().toUpperCase();
-        let contactType = 'telegram';
-        let phoneNumber = null;
-        
-        if (choice === 'A') contactType = 'telegram';
-        else if (choice === 'B') contactType = 'phone';
-        else if (choice === 'C') {
-            contactType = 'both';
-            ctx.reply(`📞 *Enter phone number for calling (e.g., 07031234567):*`);
-            updateConversation(userId, 'choose_phone_number', conv.data);
-            conv.data.contactType = contactType;
-            return;
-        }
-        else {
-            ctx.reply(`❌ Invalid. Reply A, B, or C.`);
-            return;
-        }
-        
-        conv.data.contactType = contactType;
-        conv.data.phoneNumber = phoneNumber;
+        conv.data.contactType = 'telegram';
         updateConversation(userId, 'confirm_registration', conv.data);
         
         const data = conv.data;
@@ -513,7 +476,6 @@ Category: ${data.category}
 Business: ${data.businessName}
 Description: ${data.description}
 Contact: ${data.contact}
-Contact Type: ${contactType === 'telegram' ? 'Telegram chat' : 'Phone call'}
 
 *Confirm?* Yes / No
         `;
@@ -522,30 +484,7 @@ Contact Type: ${contactType === 'telegram' ? 'Telegram chat' : 'Phone call'}
         return;
     }
     
-    if (conv.step === 'choose_phone_number') {
-        const phoneNumber = ctx.message.text.trim();
-        conv.data.phoneNumber = phoneNumber;
-        updateConversation(userId, 'confirm_registration', conv.data);
-        
-        const data = conv.data;
-        const review = `
-✅ *REVIEW YOUR REGISTRATION*
-
-Plan: ${data.plan === 'free' ? 'Free — ₦0' : (data.plan === 'week' ? `Featured (1 week) — ₦${settings.featuredPriceWeek}` : `Featured (1 month) — ₦${settings.featuredPriceMonth}`)}
-Category: ${data.category}
-Business: ${data.businessName}
-Description: ${data.description}
-Contact: ${data.contact} (Telegram)
-Phone: ${phoneNumber}
-Contact Type: Both (Telegram + Phone)
-
-*Confirm?* Yes / No
-        `;
-        
-        ctx.reply(review, { parse_mode: 'Markdown' });
-        return;
-    }
-    
+    // CONFIRM REGISTRATION
     if (conv.step === 'confirm_registration') {
         const answer = ctx.message.text.trim().toLowerCase();
         if (answer === 'no') {
@@ -576,8 +515,7 @@ Contact Type: Both (Telegram + Phone)
             category: data.category,
             description: data.description,
             contact: data.contact,
-            contactType: data.contactType,
-            phoneNumber: data.phoneNumber || null,
+            contactType: data.contactType || 'telegram',
             plan: data.plan,
             amount: data.amount,
             status: data.plan === 'free' ? 'pending_approval' : 'awaiting_payment',
@@ -663,9 +601,6 @@ async function handleApprove(ctx, bot, YOUR_ID) {
         description: pending.description,
         contact: pending.contact,
         contactType: pending.contactType || 'telegram',
-        phoneNumber: pending.phoneNumber || null,
-        website: null,
-        location: null,
         verified: pending.plan !== 'free',
         featured: pending.plan !== 'free',
         featuredExpiry: pending.plan === 'week' ? new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0] : (pending.plan === 'month' ? new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0] : null),
@@ -677,8 +612,6 @@ async function handleApprove(ctx, bot, YOUR_ID) {
     };
     
     partners.push(newPartner);
-    settings.totalPartners = partners.length;
-    settings.totalFeatured = partners.filter(p => p.featured === true).length;
     savePartners();
     
     const index = pendingPartners.findIndex(p => p.userId === userId);
@@ -690,9 +623,7 @@ async function handleApprove(ctx, bot, YOUR_ID) {
 
 Your business *${pending.businessName}* has been APPROVED!
 
-${pending.plan !== 'free' ? '⭐ Your business is now FEATURED at the top of /partners list.\n⭐ Your business will appear in EVERY /check response.' : '📋 Your business is now visible in /partners list.'}
-
-Thank you for being part of Nigeria Security Hub!
+${pending.plan !== 'free' ? '⭐ Your business is now FEATURED!' : '📋 Your business is now visible in /partners list.'}
 
 Type /partners to see your listing.
     `, { parse_mode: 'Markdown' });
@@ -724,12 +655,10 @@ Your business *${businessName}* was not approved.
 
 Reason: ${reason}
 
-You can reapply anytime with corrected information.
-
 Type /partner to start over.
     `, { parse_mode: 'Markdown' });
     
-    ctx.reply(`✅ Rejected ${businessName} (User: ${userId}) - Reason: ${reason}`);
+    ctx.reply(`✅ Rejected ${businessName} (User: ${userId})`);
 }
 
 async function handleVerify(ctx, bot, YOUR_ID) {
@@ -757,9 +686,6 @@ async function handleVerify(ctx, bot, YOUR_ID) {
         description: pending.description,
         contact: pending.contact,
         contactType: pending.contactType || 'telegram',
-        phoneNumber: pending.phoneNumber || null,
-        website: null,
-        location: null,
         verified: true,
         featured: true,
         featuredExpiry: pending.plan === 'week' ? new Date(Date.now() + 7*24*60*60*1000).toISOString().split('T')[0] : new Date(Date.now() + 30*24*60*60*1000).toISOString().split('T')[0],
@@ -771,8 +697,6 @@ async function handleVerify(ctx, bot, YOUR_ID) {
     };
     
     partners.push(newPartner);
-    settings.totalPartners = partners.length;
-    settings.totalFeatured = partners.filter(p => p.featured === true).length;
     savePartners();
     
     const index = pendingPartners.findIndex(p => p.userId === userId);
@@ -785,9 +709,6 @@ async function handleVerify(ctx, bot, YOUR_ID) {
 Your business *${pending.businessName}* is now FULLY FEATURED!
 
 ⭐ Your listing will stay at the TOP of /partners until ${newPartner.featuredExpiry}.
-⭐ Your business will appear in EVERY /check response.
-
-Thank you for supporting Nigeria Security Hub!
 
 Type /partners to see your listing.
     `, { parse_mode: 'Markdown' });
@@ -802,7 +723,6 @@ function handleFind(ctx, YOUR_ID) {
     if (args.length < 2) { ctx.reply('Usage: /find [username or name]'); return; }
     
     const query = args.slice(1).join(' ').toLowerCase();
-    
     let results = [];
     
     for (let p of pendingPartners) {
@@ -847,7 +767,6 @@ function handlePending(ctx, YOUR_ID) {
     for (let p of pendingPartners) {
         message += `📌 *${p.businessName}* (${p.category})\n`;
         message += `   User: ${p.username} (ID: ${p.userId})\n`;
-        message += `   Contact: ${p.contact}\n`;
         message += `   Plan: ${p.plan === 'free' ? 'Free' : (p.plan === 'week' ? `Featured 1 week - ₦${settings.featuredPriceWeek}` : `Featured 1 month - ₦${settings.featuredPriceMonth}`)}\n`;
         message += `   Status: ${p.status}\n`;
         if (p.status === 'payment_pending_verification') {
@@ -856,56 +775,27 @@ function handlePending(ctx, YOUR_ID) {
         message += `\n`;
     }
     
-    message += `\n*Commands:*\n/approve [user_id]\n/reject [user_id] [reason]\n/verify [user_id] (for paid)`;
+    message += `\n*Commands:*\n/approve [user_id]\n/reject [user_id] [reason]\n/verify [user_id]`;
     
     ctx.reply(message, { parse_mode: 'Markdown' });
 }
 
 // ========== PUBLIC PARTNERS COMMAND ==========
 async function handlePartnersCommand(ctx, COMMUNITY_LINK) {
-    if (partners.length === 0) {
-        ctx.reply(`🤝 *NO PARTNERS YET*\n\nBe the first to register your business!\n\nType /partner to register.\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-        return;
-    }
-    
-    const message = formatPartnersListWithButtons();
-    
-    // Get first featured partner's buttons for CTA
-    const featuredPartners = partners.filter(p => p.featured === true);
-    const buttons = [];
-    
-    if (featuredPartners.length > 0) {
-        const partnerButtons = getPartnerButtons(featuredPartners[0]);
-        buttons.push(...partnerButtons);
-    }
-    
-    buttons.push([{ text: '🏪 Register Your Business', callback_data: 'partner_register' }]);
-    buttons.push([{ text: '👥 Join Community', url: COMMUNITY_LINK }]);
-    
-    try {
-        await ctx.reply(message, {
-            parse_mode: 'Markdown',
-            reply_markup: { inline_keyboard: buttons }
-        });
-    } catch (err) {
-        await ctx.reply(message, { parse_mode: 'Markdown' });
-    }
+    displayPartnersList(ctx);
 }
 
-// ========== HANDLE CALLBACK QUERIES ==========
+// ========== CALLBACK HANDLER ==========
 async function handlePartnerCallback(ctx, COMMUNITY_LINK) {
     const data = ctx.callbackQuery.data;
-    
     if (data === 'partner_register') {
         await ctx.answerCbQuery();
         await ctx.reply(`Type /partner to start the registration process.`);
-        return;
     }
-    
     ctx.answerCbQuery();
 }
 
-// ========== INITIALIZE MODULE ==========
+// ========== INITIALIZE ==========
 function initPartnerSystem() {
     loadPartners();
     loadPending();
@@ -925,7 +815,6 @@ module.exports = {
     handleFind,
     handlePending,
     getNextFeaturedPartner,
-    resetFeaturedIndex,
     getPartnerButtons,
     getPartnersCount: () => partners.length,
     getPendingCount: () => pendingPartners.length
