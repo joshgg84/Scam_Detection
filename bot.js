@@ -66,6 +66,7 @@ After that, I respond instantly. Thanks for your patience! 🇳🇬
 /redflags - Words that signal a scam
 /whattodo - Steps if you've been scammed
 /tips - Get a random security tip
+/pdf - Get exclusive scammer tactics PDF
 
 *Community Commands:*
 /community - Join our Telegram group
@@ -346,6 +347,33 @@ Any amount helps! 🇳🇬
     `, { parse_mode: 'Markdown' });
 });
 
+// ========== PDF COMMAND ==========
+bot.command('pdf', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only. PDF will be available to everyone when we hit 150 members.');
+        return;
+    }
+
+    try {
+        ctx.replyWithDocument({ source: 'Blank Template.pdf' }, {
+            caption: `📚 *TOP 10 SCAMMER TACTICS OF 2026*
+
+Exclusive PDF for Nigeria Security Hub members.
+
+✅ How to spot each scam
+✅ What to do if targeted
+✅ Share to protect family
+
+👥 Join our community: ${COMMUNITY_LINK}
+🤖 Bot: @JoshuaGiwaBot`,
+            parse_mode: 'Markdown'
+        });
+        console.log(`📄 Admin sent PDF at ${new Date().toLocaleString()}`);
+    } catch (err) {
+        ctx.reply(`❌ Error: ${err.message}\n\nMake sure 'scammer-tactics.pdf' is in the bot folder.`);
+    }
+});
+
 // ========== ADMIN COMMANDS ==========
 
 bot.command('adminhelp', (ctx) => {
@@ -370,6 +398,9 @@ bot.command('adminhelp', (ctx) => {
 /download - Download storage files
 /listscammers - View all scammers
 /recent - View last 10 scammers
+
+*PDF Command:*
+/pdf - Send exclusive scammer tactics PDF
 
 *Your Info:*
 Admin ID: ${YOUR_ID}
