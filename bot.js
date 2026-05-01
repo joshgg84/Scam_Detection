@@ -48,12 +48,10 @@ function loadTerms() {
 function getTerm(term) {
     const lowerTerm = term.toLowerCase();
     
-    // Exact match
     if (scamTerms[lowerTerm]) {
         return scamTerms[lowerTerm];
     }
     
-    // Partial match (e.g., user types "phish" and finds "phishing")
     for (const [key, value] of Object.entries(scamTerms)) {
         if (key.includes(lowerTerm) || lowerTerm.includes(key)) {
             return value;
@@ -67,7 +65,6 @@ function getAllTermKeys() {
 }
 
 function getCommonScams() {
-    // Order of common scams to display in /scamtypes
     const commonKeys = ['phishing', '419', 'romance scam', 'fake alert', 'investment scam', 'job scam', 'loan scam', 'sim swap', 'otp scam', 'pig butchering'];
     return commonKeys.filter(key => scamTerms[key]);
 }
@@ -116,7 +113,7 @@ After that, I respond instantly. Thanks for your patience! 🇳🇬
 /redflags - Words that signal a scam
 /whattodo - Steps if you've been scammed
 /tips - Get a random security tip
-/whatis [term] - Learn scam terms (phishing, 419, etc.)
+/whatis [term] - Learn scam terms
 
 *Business & Community:*
 /partners - Browse trusted businesses
@@ -392,7 +389,6 @@ bot.command('scamtypes', (ctx) => {
         if (term) {
             const title = term.title || `📖 ${scamKey.toUpperCase()}`;
             const content = term.content || term;
-            // Get first sentence only for the list (up to 80 chars)
             const shortContent = content.split('.')[0] + '.';
             message += `${title}\n   ${shortContent.substring(0, 80)}...\n\n`;
         }
@@ -428,7 +424,6 @@ Type /whatis [term] to learn scam-related terms.
 /whatis phishing
 /whatis 419
 /whatis yahoo boy
-/whatis romance scam
 
 *Available terms (${getAllTermKeys().length} total):*
 ${termList}...
@@ -477,11 +472,52 @@ Any amount helps! 🇳🇬
     `, { parse_mode: 'Markdown' });
 });
 
-// ========== PARTNER COMMANDS (from partner.js) ==========
-bot.command('partners', async (ctx) => {
-    await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK);
+// ========== PARTNERS COMMAND (Direct - No partner module needed) ==========
+bot.command('partners', (ctx) => {
+    try {
+        let partnersList = [];
+        if (fs.existsSync('partners.json')) {
+            const data = JSON.parse(fs.readFileSync('partners.json', 'utf8'));
+            partnersList = data.partners || [];
+        }
+        
+        if (partnersList.length === 0) {
+            ctx.reply(`🤝 *NO PARTNERS YET*\n\nBe the first to register your business!\n\nType /partner to register.\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        let message = `🤝 *OUR TRUSTED PARTNERS*\n\n`;
+        
+        const featured = partnersList.filter(p => p.featured === true);
+        const normal = partnersList.filter(p => p.featured !== true);
+        
+        for (let p of featured) {
+            message += `⭐ *${p.businessName}* (${p.category}) [FEATURED]\n`;
+            if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
+            message += `   📞 ${p.contact}\n\n`;
+        }
+        
+        let count = 1;
+        for (let p of normal) {
+            message += `${count}. *${p.businessName}* (${p.category})\n`;
+            if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
+            message += `   📞 ${p.contact}\n\n`;
+            count++;
+        }
+        
+        message += `📊 *Total:* ${partnersList.length} partners\n\n`;
+        message += `📞 *Want to register your business?* Type /partner\n`;
+        message += `👥 ${COMMUNITY_LINK}`;
+        
+        ctx.reply(message, { parse_mode: 'Markdown' });
+        
+    } catch (err) {
+        console.error('Partners command error:', err);
+        ctx.reply(`⚠️ Error loading partners. Admin notified.\n\n👥 ${COMMUNITY_LINK}`);
+    }
 });
 
+// ========== PARTNER COMMAND (from partner.js) ==========
 bot.command('partner', async (ctx) => {
     await partnerSystem.handlePartnerCommand(ctx, COMMUNITY_LINK, YOUR_ID, bot);
 });
