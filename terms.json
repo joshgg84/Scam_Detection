@@ -1,0 +1,66 @@
+{
+  "phishing": {
+    "title": "🎣 Phishing",
+    "content": "Fake messages pretending to be from banks, email providers, or government agencies. They want your password, PIN, or OTP. Never click links in suspicious messages."
+  },
+  "spoofing": {
+    "title": "🎭 Spoofing",
+    "content": "When scammers fake a phone number, email address, or website to look like someone you trust. Your bank's real number can appear on your phone, but it's actually a scammer."
+  },
+  "smishing": {
+    "title": "📱 Smishing",
+    "content": "SMS phishing. Fake text messages claiming your account is locked, you won a prize, or your SIM will be deactivated. They include fake links or phone numbers."
+  },
+  "yahoo boy": {
+    "title": "💻 Yahoo Boy",
+    "content": "Nigerian slang for an internet fraudster. Named after early scammers who used Yahoo email and chat rooms. Now they use all platforms — Telegram, WhatsApp, Instagram, Facebook."
+  },
+  "419": {
+    "title": "📜 419 Scam",
+    "content": "Named after Nigeria's Criminal Code Act Section 419 (now Section 318). Advance fee fraud — promising millions if you pay a small 'processing fee' first. Also called 'Nigerian Prince' scam internationally."
+  },
+  "romance scam": {
+    "title": "💔 Romance Scam",
+    "content": "Someone pretends to love you, builds a relationship over weeks or months, then asks for money — medical emergency, flight ticket to visit you, business problem. They never meet in person."
+  },
+  "fake alert": {
+    "title": "🏦 Fake Alert",
+    "content": "A fake bank credit alert SMS. It looks real but no money actually arrived. Always check your bank app balance, not just SMS. Never release goods or send money based on SMS alone."
+  },
+  "omonile scam": {
+    "title": "🏠 Omonile Scam",
+    "content": "Fake land agents claiming to own or represent land owners. They sell the same plot to multiple people, or sell land they don't own. Always verify with official land records."
+  },
+  "gift card scam": {
+    "title": "🎁 Gift Card Scam",
+    "content": "Scammer asks you to buy gift cards (Google Play, Apple, Steam) and send the codes. They promise to pay you back or use it for 'fees'. Once you send the code, the money is gone forever."
+  },
+  "investment scam": {
+    "title": "📈 Investment Scam",
+    "content": "'Double your money in 24 hours', 'Guaranteed 50% returns weekly', 'Cryptocurrency mining with 300% profit'. Real investments don't promise fixed high returns. If it sounds too good to be true, it is."
+  },
+  "job scam": {
+    "title": "💼 Job Scam",
+    "content": "Fake job offer. They ask you to pay for 'application fee', 'training material', 'work visa', or 'background check'. Legitimate employers never ask for money to give you a job."
+  },
+  "loan scam": {
+    "title": "💰 Loan Scam",
+    "content": "Fake loan app or agent offering 'instant loan'. They ask for advance payment for 'processing', 'insurance', or 'registration fee'. Real loans deduct their fees from the money they give you, not the other way around."
+  },
+  "pig butchering": {
+    "title": "🐷 Pig Butchering Scam",
+    "content": "A long-term investment scam. The scammer builds trust over weeks or months, shows fake profits, then disappears with your money when you invest large amounts. Called 'pig butchering' because they 'fatten you up' before the kill."
+  },
+  "sim swap": {
+    "title": "📱 SIM Swap Scam",
+    "content": "Scammer convinces your mobile network to transfer your phone number to their SIM card. Once they control your number, they reset passwords and empty your bank accounts. Never share your SIM swap PIN or last transaction details with anyone."
+  },
+  "otp scam": {
+    "title": "🔐 OTP Scam",
+    "content": "Scammer calls pretending to be from your bank. They say your account is compromised and need the OTP sent to your phone to 'secure it'. The OTP is actually the key to your account. Never share OTP with anyone — not even 'bank staff'."
+  },
+  "fake pos": {
+    "title": "💳 Fake POS Scam",
+    "content": "Fake POS agents or machines that don't actually process payments. They take your card, swipe it on a device that shows 'approved', but no money reaches your account. Use trusted POS agents only and confirm before leaving."
+  }
+}
