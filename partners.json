@@ -1,0 +1,34 @@
+{
+  "settings": {
+    "totalPartners": 1,
+    "totalFeatured": 1,
+    "lastPartnerId": 1,
+    "featuredPriceWeek": 15000,
+    "featuredPriceMonth": 50000,
+    "currency": "₦",
+    "bankName": "Zenith Bank",
+    "accountName": "Joshua Giwa",
+    "accountNumber": "4268186069",
+    "categories": ["tech", "finance", "realestate", "legal", "services", "shop", "education", "healthcare", "automotive", "agriculture", "logistics", "hospitality", "other"]
+  },
+  "partners": [
+    {
+      "id": 1,
+      "userId": 8447414897,
+      "username": "@JoshuaGiwa",
+      "businessName": "Giwa Web Solutions",
+      "category": "tech",
+      "description": "Web development, AI chatbots, scam detection tools, and cybersecurity consulting. Creator of Nigeria Scam Detector Bot.",
+      "contact": "@JoshuaGiwa on Telegram",
+      "location": "Nigeria (remote available)",
+      "verified": true,
+      "featured": true,
+      "featuredExpiry": "2026-12-31",
+      "plan": "month",
+      "dateAdded": "2026-04-01",
+      "views": 0,
+      "paymentVerified": true,
+      "status": "approved"
+    }
+  ]
+}
