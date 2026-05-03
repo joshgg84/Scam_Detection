@@ -2,6 +2,7 @@
 // Creator: Joshua Giwa
 // Handles: /partner, /partners, /approve, /reject, /verify, /find, /pending
 // Features: Round-robin featured partners, CTA buttons, payment tracking
+// Accepts: Numbers (1-5) AND Words (one, two, three, four, five)
 
 const fs = require('fs');
 
@@ -22,6 +23,25 @@ const CONTACT = {
     whatsapp: "09025839789",
     telegram: "@JoshuaGiwa"
 };
+
+// ========== CONVERT WORD TO NUMBER ==========
+function wordToNumber(word) {
+    const lowerWord = word.toLowerCase().trim();
+    
+    const wordMap = {
+        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+        'view': 1, 'search': 2, 'register': 3, 'status': 4, 'contact': 5,
+        '1': 1, '2': 2, '3': 3, '4': 4, '5': 5
+    };
+    
+    if (wordMap[lowerWord]) return wordMap[lowerWord];
+    
+    // Try to parse as number
+    const num = parseInt(lowerWord);
+    if (!isNaN(num) && num >= 1 && num <= 5) return num;
+    
+    return null;
+}
 
 // ========== LOAD/SAVE FUNCTIONS ==========
 function loadPartners() {
@@ -294,17 +314,17 @@ Welcome to Nigeria Security Hub Partner Directory.
 4️⃣ *My status*
 5️⃣ *Contact Joshua Giwa*
 
-*Type 1, 2, 3, 4, or 5:*
+*Type: 1, 2, 3, 4, or 5 (or words: one, two, three, four, five)*
         `);
         return;
     }
     
     if (conv.step === 'main_menu') {
-        const choice = ctx.message.text.trim();
-        const choiceNum = parseInt(choice);
+        const choiceRaw = ctx.message.text.trim();
+        const choiceNum = wordToNumber(choiceRaw);
         
         // Option 1: View all partners
-        if (choice === '1' || choiceNum === 1) {
+        if (choiceNum === 1) {
             clearConversation(userId);
             
             let partnersList = [];
@@ -344,7 +364,7 @@ Welcome to Nigeria Security Hub Partner Directory.
         }
         
         // Option 2: Search by category
-        if (choice === '2' || choiceNum === 2) {
+        if (choiceNum === 2) {
             updateConversation(userId, 'search_category');
             ctx.reply(`
 📂 *SEARCH BY CATEGORY*
@@ -358,7 +378,7 @@ ${settings.categories.join(', ')}
         }
         
         // Option 3: Register my business
-        if (choice === '3' || choiceNum === 3) {
+        if (choiceNum === 3) {
             const existing = getPartnerByUserId(userId);
             if (existing) {
                 ctx.reply(`✅ You already have a registered business: *${existing.businessName}*\n\nType /partner status to view.`, { parse_mode: 'Markdown' });
@@ -393,14 +413,14 @@ ${settings.categories.join(', ')}
         }
         
         // Option 4: My status
-        if (choice === '4' || choiceNum === 4) {
+        if (choiceNum === 4) {
             clearConversation(userId);
             ctx.reply(`Type /partner status to check your registration status.`);
             return;
         }
         
         // Option 5: Contact Joshua Giwa
-        if (choice === '5' || choiceNum === 5) {
+        if (choiceNum === 5) {
             clearConversation(userId);
             ctx.reply(`
 📞 *CONTACT JOSHUA GIWA*
@@ -419,7 +439,11 @@ For bot issues, registration problems, or partnership inquiries.
         
         // Invalid choice
         ctx.reply(`❌ Invalid choice. Type 1, 2, 3, 4, or 5.
-        
+
+You can also type:
+- one, two, three, four, five
+- view, search, register, status, contact
+
 1️⃣ View all partners
 2️⃣ Search by category
 3️⃣ Register my business
