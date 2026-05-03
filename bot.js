@@ -20,7 +20,7 @@ if (!BOT_TOKEN) {
 const bot = new Telegraf(BOT_TOKEN);
 const YOUR_ID = 8447414897;
 const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
-const GROUP_ID = -5079110119;
+const GROUP_ID = -1003513272328;  // ← Your actual group ID
 
 // Initialize Partner System
 partnerSystem.initPartnerSystem();
@@ -152,6 +152,7 @@ function getAdminHelpMessage() {
 
 *Database Management:*
 /listscammers - View all reported scammers
+/scammers - Same as /listscammers
 /recent - View last 10 scammers
 /download - Download backup files
 
@@ -742,6 +743,32 @@ bot.command('listscammers', (ctx) => {
     ctx.reply(message, { parse_mode: 'Markdown' });
 });
 
+// Alias for listscammers
+bot.command('scammers', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+
+    const scammers = getAllScammers();
+    
+    if (scammers.length === 0) {
+        ctx.reply('📋 No scammers reported yet.');
+        return;
+    }
+
+    let message = `📋 *REPORTED SCAMMERS (${scammers.length})*\n\n`;
+    for (let i = 0; i < Math.min(30, scammers.length); i++) {
+        message += `${i+1}. ${scammers[i]}\n`;
+    }
+    
+    if (scammers.length > 30) {
+        message += `\n...and ${scammers.length - 30} more.`;
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
 bot.command('recent', (ctx) => {
     if (ctx.from.id !== YOUR_ID) {
         ctx.reply('❌ Admin only.');
@@ -834,7 +861,7 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// ========== DAILY TIPS TO GROUP ==========
+// ========== DAILY TIPS TO GROUP (Fixed) ==========
 async function sendDailyTipToGroup() {
     if (dailyTips.length === 0) {
         console.log('⚠️ No tips available to send');
@@ -842,36 +869,67 @@ async function sendDailyTipToGroup() {
     }
     
     const today = new Date();
-    const nigeriaTime = new Date(today.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
-    const dayOfMonth = nigeriaTime.getDate();
-    const tipIndex = (dayOfMonth - 1) % dailyTips.length;
-    const todaysTip = dailyTips[tipIndex];
+    // Force Nigeria timezone (UTC+1)
+    const nigeriaTime = new Date(today.getTime() + (3600000));
+    const hour = nigeriaTime.getUTCHours();
+    const minute = nigeriaTime.getUTCMinutes();
     
-    const message = `${todaysTip}\n\n🇳🇬 Stay safe! Report scammers to @JoshuaGiwaBot`;
+    console.log(`⏰ Daily tip check - Nigeria time: ${hour}:${minute}`);
+    
+    if (hour === 8 && minute === 0) {
+        const dayOfMonth = nigeriaTime.getUTCDate();
+        const tipIndex = (dayOfMonth - 1) % dailyTips.length;
+        const todaysTip = dailyTips[tipIndex];
+        
+        const message = `${todaysTip}\n\n🇳🇬 Stay safe! Report scammers to @JoshuaGiwaBot`;
+        
+        try {
+            await bot.telegram.sendMessage(GROUP_ID, message, { parse_mode: 'Markdown' });
+            console.log(`📰 Daily tip sent to group at ${hour}:${minute}`);
+        } catch (err) {
+            console.log(`❌ Failed to send tip to group: ${err.message}`);
+        }
+    }
+}
+
+// Run every minute
+setInterval(() => {
+    sendDailyTipToGroup();
+}, 60 * 1000);
+
+console.log('⏰ Daily tip scheduler started - checking every minute for 8am Nigeria time');
+
+// ========== TEST TIP COMMAND (Admin only) ==========
+bot.command('testtip', async (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    
+    if (dailyTips.length === 0) {
+        ctx.reply('⚠️ No tips available.');
+        return;
+    }
+    
+    const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
     
     try {
-        await bot.telegram.sendMessage(GROUP_ID, message, { parse_mode: 'Markdown' });
-        console.log(`📰 Daily tip sent to group at ${nigeriaTime.toLocaleTimeString()}`);
+        await bot.telegram.sendMessage(GROUP_ID, `${randomTip}\n\n🇳🇬 Test message - Daily tips are working!`, { parse_mode: 'Markdown' });
+        ctx.reply('✅ Test tip sent to group!');
     } catch (err) {
-        console.log(`❌ Failed to send tip to group: ${err.message}`);
+        ctx.reply(`❌ Failed to send: ${err.message}`);
+        console.log(`❌ Test tip error: ${err.message}`);
     }
-}
+});
 
-function scheduleDailyTip() {
-    const now = new Date();
-    const nigeriaTime = new Date(now.toLocaleString('en-US', { timeZone: 'Africa/Lagos' }));
-    const currentHour = nigeriaTime.getHours();
-    const currentMinute = nigeriaTime.getMinutes();
-    
-    if (currentHour === 8 && currentMinute === 0) {
-        sendDailyTipToGroup();
+// ========== GET GROUP ID COMMAND ==========
+bot.command('getgroupid', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
     }
-    
-    setTimeout(scheduleDailyTip, 60 * 1000);
-}
-
-scheduleDailyTip();
-console.log('⏰ Daily tip scheduler started - will send to group at 8am Nigeria time');
+    ctx.reply(`This chat's ID is: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' });
+});
 
 // ========== CALLBACK QUERIES ==========
 bot.action(/partner_register/, async (ctx) => {
@@ -912,6 +970,7 @@ bot.launch().then(() => {
     console.log(`💡 ${dailyTips.length} security tips loaded`);
     console.log(`📚 ${Object.keys(scamTerms).length} scam terms loaded`);
     console.log(`👥 Community: ${COMMUNITY_LINK}`);
+    console.log(`📢 Daily tips will send to group ID: ${GROUP_ID}`);
     console.log('========================================');
 }).catch((err) => {
     console.error('❌ LAUNCH FAILED:', err);
