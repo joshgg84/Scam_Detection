@@ -2,7 +2,7 @@
 // Creator: Joshua Giwa
 // Handles: /partner, /partners, /approve, /reject, /verify, /find, /pending
 // Features: Round-robin featured partners, CTA buttons, payment tracking
-// Accepts: Numbers (1-5) AND Words (one, two, three, four, five)
+// /partner command now shows contact details directly
 
 const fs = require('fs');
 
@@ -23,25 +23,6 @@ const CONTACT = {
     whatsapp: "09025839789",
     telegram: "@JoshuaGiwa"
 };
-
-// ========== CONVERT WORD TO NUMBER ==========
-function wordToNumber(word) {
-    const lowerWord = word.toLowerCase().trim();
-    
-    const wordMap = {
-        'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
-        'view': 1, 'search': 2, 'register': 3, 'status': 4, 'contact': 5,
-        '1': 1, '2': 2, '3': 3, '4': 4, '5': 5
-    };
-    
-    if (wordMap[lowerWord]) return wordMap[lowerWord];
-    
-    // Try to parse as number
-    const num = parseInt(lowerWord);
-    if (!isNaN(num) && num >= 1 && num <= 5) return num;
-    
-    return null;
-}
 
 // ========== LOAD/SAVE FUNCTIONS ==========
 function loadPartners() {
@@ -296,133 +277,9 @@ Need help? Contact @JoshuaGiwa
         return;
     }
     
-    // Full partner menu system
-    const conv = getUserConversation(userId);
-    
-    if (conv.step === 'idle') {
-        updateConversation(userId, 'main_menu');
-        ctx.reply(`
-🤝 *PARTNER HUB*
-
-Welcome to Nigeria Security Hub Partner Directory.
-
-*What do you want to do?*
-
-1️⃣ *View all partners*
-2️⃣ *Search by category*
-3️⃣ *Register my business*
-4️⃣ *My status*
-5️⃣ *Contact Joshua Giwa*
-
-*Type: 1, 2, 3, 4, or 5 (or words: one, two, three, four, five)*
-        `);
-        return;
-    }
-    
-    if (conv.step === 'main_menu') {
-        const choiceRaw = ctx.message.text.trim();
-        const choiceNum = wordToNumber(choiceRaw);
-        
-        // Option 1: View all partners
-        if (choiceNum === 1) {
-            clearConversation(userId);
-            
-            let partnersList = [];
-            if (fs.existsSync('partners.json')) {
-                const data = JSON.parse(fs.readFileSync('partners.json', 'utf8'));
-                partnersList = data.partners || [];
-            }
-            
-            if (partnersList.length === 0) {
-                ctx.reply(`🤝 *NO PARTNERS YET*\n\nBe the first to register!\n\nType /partner to start.`, { parse_mode: 'Markdown' });
-                return;
-            }
-            
-            let message = `🤝 *OUR TRUSTED PARTNERS*\n\n`;
-            const featured = partnersList.filter(p => p.featured === true);
-            const normal = partnersList.filter(p => p.featured !== true);
-            
-            for (let p of featured) {
-                message += `⭐ *${p.businessName}* (${p.category}) [FEATURED]\n`;
-                if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
-                message += `   📞 ${p.contact}\n\n`;
-            }
-            
-            let count = 1;
-            for (let p of normal) {
-                message += `${count}. *${p.businessName}* (${p.category})\n`;
-                if (p.description) message += `   ${p.description.substring(0, 80)}...\n`;
-                message += `   📞 ${p.contact}\n\n`;
-                count++;
-            }
-            
-            message += `📊 *Total:* ${partnersList.length} partners\n\n`;
-            message += `Type /partner to return to menu.`;
-            
-            ctx.reply(message, { parse_mode: 'Markdown' });
-            return;
-        }
-        
-        // Option 2: Search by category
-        if (choiceNum === 2) {
-            updateConversation(userId, 'search_category');
-            ctx.reply(`
-📂 *SEARCH BY CATEGORY*
-
-*Categories:*
-${settings.categories.join(', ')}
-
-*Type a category:*
-            `);
-            return;
-        }
-        
-        // Option 3: Register my business
-        if (choiceNum === 3) {
-            const existing = getPartnerByUserId(userId);
-            if (existing) {
-                ctx.reply(`✅ You already have a registered business: *${existing.businessName}*\n\nType /partner status to view.`, { parse_mode: 'Markdown' });
-                clearConversation(userId);
-                return;
-            }
-            updateConversation(userId, 'choose_plan');
-            ctx.reply(`
-📝 *Choose your plan:*
-
-⭐ *FEATURED (1 week)* — ₦${settings.featuredPriceWeek}
-✅ Appears at TOP of /partners list
-✅ Appears in EVERY /check response
-✅ Mentioned in daily tips (7 days)
-✅ Priority support
-✅ "⭐ Featured" badge
-
-⭐ *FEATURED (1 month)* — ₦${settings.featuredPriceMonth}
-✅ Appears at TOP of /partners list
-✅ Appears in EVERY /check response
-✅ Mentioned in daily tips (30 days)
-✅ Priority support
-✅ "⭐ Featured" badge
-✅ Longer exposure, better value
-
-🟢 *FREE* — ₦0
-✅ Basic listing in /partners
-
-*Type A, B, or C:*
-            `);
-            return;
-        }
-        
-        // Option 4: My status
-        if (choiceNum === 4) {
-            clearConversation(userId);
-            ctx.reply(`Type /partner status to check your registration status.`);
-            return;
-        }
-        
-        // Option 5: Contact Joshua Giwa
-        if (choiceNum === 5) {
-            clearConversation(userId);
-            ctx.reply(`
+    // ========== DEFAULT: SHOW CONTACT DETAILS ==========
+    // Instead of a menu, show contact details immediately
+    ctx.reply(`
 📞 *CONTACT JOSHUA GIWA*
 
 *WhatsApp:* ${CONTACT.whatsapp}
@@ -430,272 +287,23 @@ ${settings.categories.join(', ')}
 
 I'll respond as soon as possible.
 
-For bot issues, registration problems, or partnership inquiries.
+For:
+✅ Bot issues
+✅ Registration problems
+✅ Partnership inquiries
+✅ Payment confirmation
+✅ Any other questions
 
-👥 Join our community: ${COMMUNITY_LINK}
-            `, { parse_mode: 'Markdown' });
-            return;
-        }
-        
-        // Invalid choice
-        ctx.reply(`❌ Invalid choice. Type 1, 2, 3, 4, or 5.
+*Other useful commands:*
+/partners - View trusted businesses
+/check [number] - Check if a number is a scammer
+/report [number] - Report a scammer
+/tips - Get security tips
+/scamtypes - Learn common scams
+/whatis [term] - Learn scam terms
 
-You can also type:
-- one, two, three, four, five
-- view, search, register, status, contact
-
-1️⃣ View all partners
-2️⃣ Search by category
-3️⃣ Register my business
-4️⃣ My status
-5️⃣ Contact Joshua Giwa`);
-        return;
-    }
-    
-    if (conv.step === 'search_category') {
-        const category = ctx.message.text.trim().toLowerCase();
-        
-        if (!settings.categories.includes(category)) {
-            ctx.reply(`❌ Invalid category. Try: ${settings.categories.join(', ')}`);
-            return;
-        }
-        
-        const filtered = getPartnersByCategory(category);
-        if (filtered.length === 0) {
-            ctx.reply(`🤝 No partners found in *${category}*.\n\nBe the first! Type /partner to register.`, { parse_mode: 'Markdown' });
-        } else {
-            let message = `🤝 *${category.toUpperCase()} PARTNERS (${filtered.length})*\n\n`;
-            for (let p of filtered) {
-                message += `🏪 *${p.businessName}*\n   📞 ${p.contact}\n\n`;
-            }
-            ctx.reply(message, { parse_mode: 'Markdown' });
-        }
-        clearConversation(userId);
-        return;
-    }
-    
-    if (conv.step === 'choose_plan') {
-        const choice = ctx.message.text.trim().toUpperCase();
-        let plan, amount;
-        if (choice === 'A') { plan = 'free'; amount = 0; }
-        else if (choice === 'B') { plan = 'week'; amount = settings.featuredPriceWeek; }
-        else if (choice === 'C') { plan = 'month'; amount = settings.featuredPriceMonth; }
-        else {
-            ctx.reply(`❌ Invalid. Type A, B, or C.`);
-            return;
-        }
-        
-        conv.data.plan = plan;
-        conv.data.amount = amount;
-        updateConversation(userId, 'choose_category', conv.data);
-        ctx.reply(`
-📂 *Category:*
-${settings.categories.join(', ')}
-
-*Type a category:*
-        `);
-        return;
-    }
-    
-    if (conv.step === 'choose_category') {
-        const category = ctx.message.text.trim().toLowerCase();
-        
-        if (!settings.categories.includes(category)) {
-            ctx.reply(`❌ Invalid. Try: ${settings.categories.join(', ')}`);
-            return;
-        }
-        
-        conv.data.category = category;
-        updateConversation(userId, 'choose_name', conv.data);
-        ctx.reply(`📝 *Business name?*`);
-        return;
-    }
-    
-    if (conv.step === 'choose_name') {
-        conv.data.businessName = ctx.message.text.trim();
-        updateConversation(userId, 'choose_description', conv.data);
-        ctx.reply(`📝 *Short description (max 200 characters):*`);
-        return;
-    }
-    
-    if (conv.step === 'choose_description') {
-        let desc = ctx.message.text.trim();
-        if (desc.length > 200) desc = desc.substring(0, 197) + '...';
-        conv.data.description = desc;
-        updateConversation(userId, 'choose_contact', conv.data);
-        ctx.reply(`📞 *Contact info (Telegram username or phone number):*`);
-        return;
-    }
-    
-    if (conv.step === 'choose_contact') {
-        conv.data.contact = ctx.message.text.trim();
-        updateConversation(userId, 'choose_contact_type', conv.data);
-        ctx.reply(`
-📞 *How should customers contact you?*
-
-A) Telegram username (opens chat)
-B) Phone number (shows call button)
-C) Both (both buttons)
-
-*Type A, B, or C:*
-        `);
-        return;
-    }
-    
-    if (conv.step === 'choose_contact_type') {
-        const choice = ctx.message.text.trim().toUpperCase();
-        let contactType = 'telegram';
-        let phoneNumber = null;
-        
-        if (choice === 'A') contactType = 'telegram';
-        else if (choice === 'B') contactType = 'phone';
-        else if (choice === 'C') {
-            contactType = 'both';
-            ctx.reply(`📞 *Enter phone number for calling (e.g., 07031234567):*`);
-            updateConversation(userId, 'choose_phone_number', conv.data);
-            conv.data.contactType = contactType;
-            return;
-        }
-        else {
-            ctx.reply(`❌ Invalid. Type A, B, or C.`);
-            return;
-        }
-        
-        conv.data.contactType = contactType;
-        conv.data.phoneNumber = phoneNumber;
-        updateConversation(userId, 'confirm_registration', conv.data);
-        
-        const data = conv.data;
-        const review = `
-✅ *REVIEW YOUR REGISTRATION*
-
-Plan: ${data.plan === 'free' ? 'Free — ₦0' : (data.plan === 'week' ? `Featured (1 week) — ₦${settings.featuredPriceWeek}` : `Featured (1 month) — ₦${settings.featuredPriceMonth}`)}
-Category: ${data.category}
-Business: ${data.businessName}
-Description: ${data.description}
-Contact: ${data.contact}
-Contact Type: ${contactType === 'telegram' ? 'Telegram chat' : 'Phone call'}
-
-*Confirm?* Yes / No
-        `;
-        
-        ctx.reply(review, { parse_mode: 'Markdown' });
-        return;
-    }
-    
-    if (conv.step === 'choose_phone_number') {
-        const phoneNumber = ctx.message.text.trim();
-        conv.data.phoneNumber = phoneNumber;
-        updateConversation(userId, 'confirm_registration', conv.data);
-        
-        const data = conv.data;
-        const review = `
-✅ *REVIEW YOUR REGISTRATION*
-
-Plan: ${data.plan === 'free' ? 'Free — ₦0' : (data.plan === 'week' ? `Featured (1 week) — ₦${settings.featuredPriceWeek}` : `Featured (1 month) — ₦${settings.featuredPriceMonth}`)}
-Category: ${data.category}
-Business: ${data.businessName}
-Description: ${data.description}
-Contact: ${data.contact} (Telegram)
-Phone: ${phoneNumber}
-Contact Type: Both (Telegram + Phone)
-
-*Confirm?* Yes / No
-        `;
-        
-        ctx.reply(review, { parse_mode: 'Markdown' });
-        return;
-    }
-    
-    if (conv.step === 'confirm_registration') {
-        const answer = ctx.message.text.trim().toLowerCase();
-        if (answer === 'no') {
-            clearConversation(userId);
-            ctx.reply(`Registration cancelled. Type /partner to start over.`);
-            return;
-        }
-        
-        if (answer !== 'yes') {
-            ctx.reply(`Please reply "Yes" or "No" to confirm.`);
-            return;
-        }
-        
-        const data = conv.data;
-        
-        if (getPartnerByUserId(userId) || getPendingByUserId(userId)) {
-            ctx.reply(`❌ You already have a registration. Type /partner status to check.`);
-            clearConversation(userId);
-            return;
-        }
-        
-        const newId = Date.now();
-        const pendingRecord = {
-            id: newId,
-            userId: userId,
-            username: ctx.from.username || ctx.from.first_name,
-            businessName: data.businessName,
-            category: data.category,
-            description: data.description,
-            contact: data.contact,
-            contactType: data.contactType,
-            phoneNumber: data.phoneNumber || null,
-            plan: data.plan,
-            amount: data.amount,
-            status: data.plan === 'free' ? 'pending_approval' : 'awaiting_payment',
-            paymentClaimed: false,
-            dateSubmitted: new Date().toISOString()
-        };
-        
-        pendingPartners.push(pendingRecord);
-        savePending();
-        clearConversation(userId);
-        
-        if (data.plan === 'free') {
-            await bot.telegram.sendMessage(YOUR_ID, `
-📋 *NEW FREE PARTNER REGISTRATION*
-
-Business: ${data.businessName}
-User: @${ctx.from.username || userId}
-Category: ${data.category}
-Contact: ${data.contact}
-
-/approve ${userId} - Approve
-/reject ${userId} - Reject
-            `, { parse_mode: 'Markdown' });
-            
-            ctx.reply(`
-✅ *REGISTRATION SUBMITTED!*
-
-Plan: Free — ₦0
-
-Your business has been submitted for admin approval.
-
-You'll be notified when approved.
-
-*Type /partner status anytime to check.*
-            `);
-        } else {
-            ctx.reply(`
-✅ *REGISTRATION SUBMITTED!*
-
-Plan: ${data.plan === 'week' ? `Featured (1 week) — ₦${settings.featuredPriceWeek}` : `Featured (1 month) — ₦${settings.featuredPriceMonth}`}
-
-*Payment Instructions:*
-${settings.bankName}
-${settings.accountNumber}
-${settings.accountName}
-Amount: ${data.plan === 'week' ? `₦${settings.featuredPriceWeek}` : `₦${settings.featuredPriceMonth}`}
-
-*After sending money, type:*
-/partner paid ${data.plan === 'week' ? settings.featuredPriceWeek : settings.featuredPriceMonth}
-
-*Type /partner status anytime to check.*
-
-⚠️ Your listing will go live within 24 hours of payment confirmation.
-            `);
-        }
-        return;
-    }
+👥 *Join our community:* ${COMMUNITY_LINK}
+    `, { parse_mode: 'Markdown' });
 }
 
 // ========== ADMIN COMMANDS ==========
@@ -932,7 +540,7 @@ async function handlePartnersCommand(ctx, COMMUNITY_LINK) {
         }
         
         if (partnersList.length === 0) {
-            ctx.reply(`🤝 *NO PARTNERS YET*\n\nBe the first to register your business!\n\nType /partner to register.\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
+            ctx.reply(`🤝 *NO PARTNERS YET*\n\nBe the first to register your business!\n\nType /partner to contact admin for registration.\n\n👥 Join our community: ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
             return;
         }
         
@@ -956,7 +564,7 @@ async function handlePartnersCommand(ctx, COMMUNITY_LINK) {
         }
         
         message += `📊 *Total:* ${partnersList.length} partners\n\n`;
-        message += `📞 *Want to register your business?* Type /partner\n`;
+        message += `📞 *Want to register your business?* Contact @JoshuaGiwa\n`;
         message += `👥 ${COMMUNITY_LINK}`;
         
         ctx.reply(message, { parse_mode: 'Markdown' });
@@ -973,7 +581,7 @@ async function handlePartnerCallback(ctx, COMMUNITY_LINK) {
     
     if (data === 'partner_register') {
         await ctx.answerCbQuery();
-        await ctx.reply(`Type /partner to start the registration process.`);
+        await ctx.reply(`Contact @JoshuaGiwa to register your business.`);
         return;
     }
     
