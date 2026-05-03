@@ -297,7 +297,7 @@ Welcome to Nigeria Security Hub Partner Directory.
         const choiceNum = parseInt(choice);
         
         // Accept both string '1' and number 1
-        if (choice === '1' || choiceNum === 1) {
+        if (choice === '1' || choiceNum === 1 || choice.includes('1')) {
             clearConversation(userId);
             
             // Read partners directly from file
@@ -338,7 +338,7 @@ Welcome to Nigeria Security Hub Partner Directory.
             return;
         }
         
-        if (choice === '2' || choiceNum === 2) {
+        if (choice === '2' || choiceNum === 2 || choice.includes('2')) {
             updateConversation(userId, 'search_category');
             ctx.reply(`
 📂 *SEARCH BY CATEGORY*
@@ -351,7 +351,7 @@ ${settings.categories.join(', ')}
             return;
         }
         
-        if (choice === '3' || choiceNum === 3) {
+        if (choice === '3' || choiceNum === 3 || choice.includes('3')) {
             const existing = getPartnerByUserId(userId);
             if (existing) {
                 ctx.reply(`✅ You already have a registered business: *${existing.businessName}*\n\nType /partner status to view.`, { parse_mode: 'Markdown' });
@@ -385,7 +385,7 @@ ${settings.categories.join(', ')}
             return;
         }
         
-        if (choice === '4' || choiceNum === 4) {
+        if (choice === '4' || choiceNum === 4 || choice.includes('4')) {
             clearConversation(userId);
             ctx.reply(`Type /partner status to check your registration status.`);
             return;
