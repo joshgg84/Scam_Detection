@@ -361,34 +361,29 @@ bot.on('photo', async (ctx) => {
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
     
     const processingMsg = await ctx.reply('🔍 *Analyzing screenshot...*', { parse_mode: 'Markdown' });
-    const extractedText = await ocr.extractTextFromImage(fileUrl, BOT_TOKEN);
+    const extractedText = await ocr.extractTextWithFallbacks(fileUrl, BOT_TOKEN);
     
     if (!extractedText || extractedText.length < 10) {
         await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, 
-            '⚠️ *Could not read text from this image.*\n\n' +
-            '📝 *Better options:*\n' +
-            '• Forward the message as TEXT (best)\n' +
-            '• Send image as FILE (not photo)\n' +
-            '• Make sure text is clear and readable\n\n' +
-            `👥 ${COMMUNITY_LINK}`, 
+            ocr.getLowQualityHelpMessage(), 
             { parse_mode: 'Markdown' });
         return;
     }
     
     const analysis = analyzeMessage(extractedText);
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
-    response += `*Text:* ${extractedText.substring(0, 200)}...\n\n`;
+    response += `*Extracted:* ${extractedText.substring(0, 200)}...\n\n`;
     response += `*Findings:* ${analysis.alerts.slice(0, 4).join(', ') || 'None'}\n\n`;
     response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    // Check for phone numbers
+    // Extract and check phone numbers from the image
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
             const reported = checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found in image:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
         }
     }
 });
@@ -408,16 +403,11 @@ bot.on('document', async (ctx) => {
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
     
     const processingMsg = await ctx.reply('🔍 *Analyzing file...*', { parse_mode: 'Markdown' });
-    const extractedText = await ocr.extractTextFromImage(fileUrl, BOT_TOKEN);
+    const extractedText = await ocr.extractTextWithFallbacks(fileUrl, BOT_TOKEN);
     
     if (!extractedText || extractedText.length < 10) {
         await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, 
-            '⚠️ *Could not read text from this file.*\n\n' +
-            '📝 *Better options:*\n' +
-            '1️⃣ Forward the suspicious message as TEXT\n' +
-            '2️⃣ Type /check [phone number]\n' +
-            '3️⃣ Make sure the image has clear, readable text\n\n' +
-            `👥 Join our community: ${COMMUNITY_LINK}`, 
+            ocr.getLowQualityHelpMessage(), 
             { parse_mode: 'Markdown' });
         return;
     }
@@ -430,11 +420,12 @@ bot.on('document', async (ctx) => {
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
+    // Extract and check phone numbers from the image
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
             const reported = checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found in file:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
         }
     }
 });
