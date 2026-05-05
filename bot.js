@@ -119,6 +119,8 @@ URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
 MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
 INFO: "PIN", "OTP", "BVN", "CVV"
 FAKE: "WINNING", "LOTTERY", "PRINCE"
+ACCOUNT: "RENT", "LEASE", "LINKEDIN", "FACEBOOK", "INSTAGRAM"
+JOBS: "WORK FROM HOME", "EASY MONEY", "NO EXPERIENCE NEEDED"
 
 👥 Join our community: ${COMMUNITY_LINK}`;
 
@@ -130,15 +132,53 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 4. Report number to this bot: /report
 5. Join our community for support: ${COMMUNITY_LINK}`;
 
-// ========== SCAM DETECTION ==========
+// ========== ENHANCED SCAM DETECTION ==========
 function analyzeMessage(text) {
     const alerts = [];
     let riskScore = 0;
     const lowerText = text.toLowerCase();
 
-    const redFlags = ['urgent', 'immediately', 'verify account', 'bank details', 'winning', 'prize', 'lottery', 'inheritance', 'prince', 'activate your card', 'suspended account', 'click here', 'update your profile', 'confirm your pin', 'send money', 'western union', 'gift card', 'bitcoin investment', 'double your money'];
-    const sensitiveInfo = ['pin', 'password', 'otp', 'bvn', 'nuban', 'cvv', 'card number', 'atm', 'verification code'];
+    // Comprehensive scam red flags
+    const redFlags = [
+        // Urgency & money scams
+        'urgent', 'immediately', 'verify account', 'bank details', 'winning', 'prize',
+        'lottery', 'inheritance', 'prince', 'activate your card', 'suspended account',
+        'click here', 'update your profile', 'confirm your pin', 'send money',
+        'western union', 'gift card', 'bitcoin investment', 'double your money',
+        
+        // Account rental / social media scams
+        'rent', 'rental', 'linkedin', 'facebook', 'instagram', 'tiktok', 'twitter',
+        'account for rent', 'lease account', 'old account', 'aged account',
+        'social media account', 'verify account',
+        
+        // Job scam keywords
+        'work from home', 'easy money', 'no experience needed', 'get paid daily',
+        'sign up bonus', 'referral bonus', 'commission based', 'passive income',
+        
+        // Identity theft
+        'verify your identity', 'send your id', 'upload your passport', 'nin verification',
+        'bvn update', 'account verification needed', 'send your document',
+        
+        // Fake rental/property
+        'deposit now', 'holding fee', 'viewing fee', 'application fee', 'background check fee',
+        'refundable deposit', 'key fee', 'admin fee',
+        
+        // Loan scams
+        'loan approval', 'guaranteed loan', 'no credit check', 'instant loan',
+        'pay advance fee', 'processing fee', 'loan insurance',
+        
+        // Investment scams
+        'guaranteed returns', 'risk free investment', 'crypto trading', 'forex trading',
+        'binary options', 'get rich quick', 'financial freedom'
+    ];
+    
+    const sensitiveInfo = [
+        'pin', 'password', 'otp', 'bvn', 'nuban', 'cvv', 'card number',
+        'atm', 'verification code', 'passport', 'driver license', 'nin',
+        'id card', 'means of identification', 'utility bill', 'statement of account'
+    ];
 
+    // Check for red flags
     redFlags.forEach(flag => {
         if (lowerText.includes(flag)) {
             alerts.push(`⚠️ Suspicious: "${flag}"`);
@@ -146,6 +186,7 @@ function analyzeMessage(text) {
         }
     });
 
+    // Check for sensitive info requests
     sensitiveInfo.forEach(info => {
         if (lowerText.includes(info)) {
             alerts.push(`🚨 NEVER share your ${info.toUpperCase()}`);
@@ -153,37 +194,59 @@ function analyzeMessage(text) {
         }
     });
 
-    if (lowerText.includes('immediately') || lowerText.includes('within 24 hours')) {
-        alerts.push("⏰ False urgency tactic");
-        riskScore += 15;
-    }
+    // Check for urgency tactics
+    const urgencyWords = ['immediately', 'within 24 hours', 'asap', 'right now', 'today only'];
+    urgencyWords.forEach(word => {
+        if (lowerText.includes(word)) {
+            alerts.push("⏰ False urgency tactic");
+            riskScore += 15;
+        }
+    });
 
+    // Check for phone numbers
     const phonePatterns = [/\+?\d[\d\s\-\(\)]{8,}\d/g];
     for (const pattern of phonePatterns) {
         const matches = text.match(pattern);
         if (matches) {
             for (const number of matches) {
-                if (checkNumberInDatabase(number)) {
-                    alerts.push(`🚨 ${number} is a REPORTED SCAMMER!`);
-                    riskScore += 50;
+                const cleanedNumber = number.replace(/\D/g, '');
+                if (cleanedNumber.length >= 10) {
+                    if (checkNumberInDatabase(cleanedNumber)) {
+                        alerts.push(`🚨 ${cleanedNumber} is a REPORTED SCAMMER!`);
+                        riskScore += 50;
+                    } else {
+                        alerts.push(`📞 Phone number found: ${cleanedNumber}`);
+                        riskScore += 5;
+                    }
                 }
             }
         }
     }
 
+    // Check for links (phishing)
+    if (lowerText.includes('http://') || lowerText.includes('https://') || lowerText.includes('.com') || lowerText.includes('.ng')) {
+        alerts.push("🔗 Link detected - could be phishing");
+        riskScore += 15;
+    }
+
+    // Determine risk level
     let riskLevel, emoji, recommendation;
     if (riskScore >= 40) {
         riskLevel = "HIGH";
         emoji = "🔴";
-        recommendation = "DO NOT RESPOND. Block and report!";
+        recommendation = "DO NOT RESPOND. Block and report immediately!";
     } else if (riskScore >= 20) {
         riskLevel = "MEDIUM";
         emoji = "🟡";
-        recommendation = "Be very careful. Verify first.";
+        recommendation = "Be very careful. Verify the sender through another channel.";
+    } else if (riskScore >= 10) {
+        riskLevel = "LOW-MEDIUM";
+        emoji = "🟠";
+        recommendation = "Some suspicious signs. Proceed with caution.";
     } else {
         riskLevel = "LOW";
         emoji = "🟢";
-        recommendation = "No obvious scam indicators.";
+        recommendation = "No obvious scam indicators, but always stay cautious.";
     }
 
     return { riskLevel, emoji, riskScore, alerts, recommendation };
@@ -313,9 +376,9 @@ bot.on('photo', async (ctx) => {
     }
     
     const analysis = analyzeMessage(extractedText);
-    let response = `${analysis.emoji} *${analysis.riskLevel} RISK*\n\n`;
+    let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
     response += `*Text:* ${extractedText.substring(0, 200)}...\n\n`;
-    response += `*Findings:* ${analysis.alerts.slice(0, 3).join(', ') || 'None'}\n\n`;
+    response += `*Findings:* ${analysis.alerts.slice(0, 4).join(', ') || 'None'}\n\n`;
     response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
@@ -334,7 +397,6 @@ bot.on('photo', async (ctx) => {
 bot.on('document', async (ctx) => {
     const document = ctx.message.document;
     const mimeType = document.mime_type;
-    const fileName = document.file_name || '';
     
     // Only process image files
     if (!mimeType || !mimeType.startsWith('image/')) {
@@ -342,14 +404,10 @@ bot.on('document', async (ctx) => {
         return;
     }
     
-    // Get the file
     const file = await ctx.telegram.getFile(document.file_id);
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
     
-    // Send processing message
     const processingMsg = await ctx.reply('🔍 *Analyzing file...*', { parse_mode: 'Markdown' });
-    
-    // Extract text using OCR
     const extractedText = await ocr.extractTextFromImage(fileUrl, BOT_TOKEN);
     
     if (!extractedText || extractedText.length < 10) {
@@ -364,23 +422,19 @@ bot.on('document', async (ctx) => {
         return;
     }
     
-    // Analyze the extracted text
     const analysis = analyzeMessage(extractedText);
-    
-    let response = `${analysis.emoji} *${analysis.riskLevel} RISK* ${analysis.emoji}\n\n`;
-    response += `*Extracted from file:*\n${extractedText.substring(0, 300)}${extractedText.length > 300 ? '...' : ''}\n\n`;
-    response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n') || 'No obvious scam indicators'}\n\n`;
-    response += `*Action:* ${analysis.recommendation}\n\n`;
-    response += `👥 *Join our community:* ${COMMUNITY_LINK}`;
+    let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
+    response += `*Extracted:* ${extractedText.substring(0, 300)}${extractedText.length > 300 ? '...' : ''}\n\n`;
+    response += `*Findings:*\n${analysis.alerts.slice(0, 4).join('\n') || 'No obvious scam indicators'}\n\n`;
+    response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    // Also check for phone numbers in the extracted text
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
             const reported = checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
 });
@@ -389,10 +443,13 @@ bot.on('document', async (ctx) => {
 bot.on('text', async (ctx) => {
     const message = ctx.message.text;
     if (message.startsWith('/')) return;
+    
     const analysis = analyzeMessage(message);
-    if (analysis.riskScore >= 20) {
-        let response = `${analysis.emoji} *${analysis.riskLevel} RISK*\n\n`;
-        response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
+    
+    // Only respond if risk score is 10 or higher (catches more scams)
+    if (analysis.riskScore >= 10) {
+        let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
+        response += `*Findings:*\n${analysis.alerts.slice(0, 4).join('\n')}\n\n`;
         response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
         ctx.reply(response, { parse_mode: 'Markdown' });
     }
