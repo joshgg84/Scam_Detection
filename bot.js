@@ -89,7 +89,8 @@ function getHelpMessage() {
 *Detection:*
 /check [number] - Check if a number is reported
 /report [number] - Report a scammer
-📸 Send a screenshot - I'll read and analyze it
+📸 Send a CLEAR screenshot or image file
+📝 Forward suspicious messages as TEXT (best method)
 
 *Education:*
 /scamtypes - Learn common scams
@@ -290,7 +291,7 @@ bot.command('verify', async (ctx) => await partnerSystem.handleVerify(ctx, bot, 
 bot.command('find', (ctx) => partnerSystem.handleFind(ctx, YOUR_ID));
 bot.command('pending', (ctx) => partnerSystem.handlePending(ctx, YOUR_ID));
 
-// ========== PHOTO HANDLER WITH OCR ==========
+// ========== HANDLE PHOTOS (for OCR) ==========
 bot.on('photo', async (ctx) => {
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
     const file = await ctx.telegram.getFile(photo.file_id);
@@ -301,7 +302,12 @@ bot.on('photo', async (ctx) => {
     
     if (!extractedText || extractedText.length < 10) {
         await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, 
-            '⚠️ *Could not read text from image.*\n\nSend a clearer screenshot or forward the message as text.', 
+            '⚠️ *Could not read text from this image.*\n\n' +
+            '📝 *Better options:*\n' +
+            '• Forward the message as TEXT (best)\n' +
+            '• Send image as FILE (not photo)\n' +
+            '• Make sure text is clear and readable\n\n' +
+            `👥 ${COMMUNITY_LINK}`, 
             { parse_mode: 'Markdown' });
         return;
     }
@@ -309,7 +315,7 @@ bot.on('photo', async (ctx) => {
     const analysis = analyzeMessage(extractedText);
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK*\n\n`;
     response += `*Text:* ${extractedText.substring(0, 200)}...\n\n`;
-    response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
+    response += `*Findings:* ${analysis.alerts.slice(0, 3).join(', ') || 'None'}\n\n`;
     response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
@@ -319,7 +325,62 @@ bot.on('photo', async (ctx) => {
     if (phoneMatch) {
         for (const phone of phoneMatch) {
             const reported = checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet. Be cautious.'}`, { parse_mode: 'Markdown' });
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
+        }
+    }
+});
+
+// ========== HANDLE DOCUMENTS/FILES (for OCR) ==========
+bot.on('document', async (ctx) => {
+    const document = ctx.message.document;
+    const mimeType = document.mime_type;
+    const fileName = document.file_name || '';
+    
+    // Only process image files
+    if (!mimeType || !mimeType.startsWith('image/')) {
+        await ctx.reply('📄 *Please send an image file* (jpg, png) for OCR analysis.\n\nFor text messages, just forward them directly.', { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    // Get the file
+    const file = await ctx.telegram.getFile(document.file_id);
+    const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
+    
+    // Send processing message
+    const processingMsg = await ctx.reply('🔍 *Analyzing file...*', { parse_mode: 'Markdown' });
+    
+    // Extract text using OCR
+    const extractedText = await ocr.extractTextFromImage(fileUrl, BOT_TOKEN);
+    
+    if (!extractedText || extractedText.length < 10) {
+        await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, 
+            '⚠️ *Could not read text from this file.*\n\n' +
+            '📝 *Better options:*\n' +
+            '1️⃣ Forward the suspicious message as TEXT\n' +
+            '2️⃣ Type /check [phone number]\n' +
+            '3️⃣ Make sure the image has clear, readable text\n\n' +
+            `👥 Join our community: ${COMMUNITY_LINK}`, 
+            { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    // Analyze the extracted text
+    const analysis = analyzeMessage(extractedText);
+    
+    let response = `${analysis.emoji} *${analysis.riskLevel} RISK* ${analysis.emoji}\n\n`;
+    response += `*Extracted from file:*\n${extractedText.substring(0, 300)}${extractedText.length > 300 ? '...' : ''}\n\n`;
+    response += `*Findings:*\n${analysis.alerts.slice(0, 3).join('\n') || 'No obvious scam indicators'}\n\n`;
+    response += `*Action:* ${analysis.recommendation}\n\n`;
+    response += `👥 *Join our community:* ${COMMUNITY_LINK}`;
+    
+    await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
+    
+    // Also check for phone numbers in the extracted text
+    const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
+    if (phoneMatch) {
+        for (const phone of phoneMatch) {
+            const reported = checkNumberInDatabase(phone);
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
         }
     }
 });
