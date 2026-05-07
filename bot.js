@@ -10,6 +10,8 @@ const { dailyTips } = require('./tips.js');
 // Import modules
 const partnerSystem = require('./partner.js');
 const ocr = require('./ocr.js');
+const linkModule = require('./links.js');
+const detection = require('./detection.js');
 const { registerAdminCommands } = require('./admin.js');
 
 // ========== CONFIGURATION ==========
@@ -84,13 +86,17 @@ function getHelpMessage() {
 
 *Creator:* Joshua Giwa
 
-⏰ *Note:* First message may take 20-30 seconds to wake me up.
+📝 *How to check a suspicious message:*
+/check [paste the suspicious message here]
 
-*Detection:*
-/check [number] - Check if a number is reported
-/report [number] - Report a scammer
-📸 Send a CLEAR screenshot or image file
-📝 Forward suspicious messages as TEXT (best method)
+📞 *How to check a phone number:*
+/check 08012345678
+
+*Commands:*
+/check [message or number] - Analyze any suspicious message
+/report [number] [reason] - Report a scammer
+/checklink [url] - Check if a link is a scam
+/reportlink [url] [reason] - Report a scam link
 
 *Education:*
 /scamtypes - Learn common scams
@@ -101,14 +107,13 @@ function getHelpMessage() {
 
 *Business:*
 /partners - Browse trusted businesses
-/partner - Contact Joshua Giwa
+/partner - Partner program info
 /community - Join our Telegram group
 /stats - Bot statistics
-/support - Support this bot
 
 👥 *Community:* ${COMMUNITY_LINK}
 
-🇳🇬 Stay safe. Verify first.
+🇳🇬 Stay safe. Always VERIFY before you trust.
     `;
 }
 
@@ -119,8 +124,8 @@ URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
 MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
 INFO: "PIN", "OTP", "BVN", "CVV"
 FAKE: "WINNING", "LOTTERY", "PRINCE"
-ACCOUNT: "RENT", "LEASE", "LINKEDIN", "FACEBOOK", "INSTAGRAM"
-JOBS: "WORK FROM HOME", "EASY MONEY", "NO EXPERIENCE NEEDED"
+ACCOUNT: "RENT", "LEASE", "LINKEDIN"
+JOBS: "WORK FROM HOME", "EASY MONEY"
 
 👥 Join our community: ${COMMUNITY_LINK}`;
 
@@ -132,126 +137,6 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 4. Report number to this bot: /report
 5. Join our community for support: ${COMMUNITY_LINK}`;
 
-// ========== ENHANCED SCAM DETECTION ==========
-function analyzeMessage(text) {
-    const alerts = [];
-    let riskScore = 0;
-    const lowerText = text.toLowerCase();
-
-    // Comprehensive scam red flags
-    const redFlags = [
-        // Urgency & money scams
-        'urgent', 'immediately', 'verify account', 'bank details', 'winning', 'prize',
-        'lottery', 'inheritance', 'prince', 'activate your card', 'suspended account',
-        'click here', 'update your profile', 'confirm your pin', 'send money',
-        'western union', 'gift card', 'bitcoin investment', 'double your money',
-        
-        // Account rental / social media scams
-        'rent', 'rental', 'linkedin', 'facebook', 'instagram', 'tiktok', 'twitter',
-        'account for rent', 'lease account', 'old account', 'aged account',
-        'social media account', 'verify account',
-        
-        // Job scam keywords
-        'work from home', 'easy money', 'no experience needed', 'get paid daily',
-        'sign up bonus', 'referral bonus', 'commission based', 'passive income',
-        
-        // Identity theft
-        'verify your identity', 'send your id', 'upload your passport', 'nin verification',
-        'bvn update', 'account verification needed', 'send your document',
-        
-        // Fake rental/property
-        'deposit now', 'holding fee', 'viewing fee', 'application fee', 'background check fee',
-        'refundable deposit', 'key fee', 'admin fee',
-        
-        // Loan scams
-        'loan approval', 'guaranteed loan', 'no credit check', 'instant loan',
-        'pay advance fee', 'processing fee', 'loan insurance',
-        
-        // Investment scams
-        'guaranteed returns', 'risk free investment', 'crypto trading', 'forex trading',
-        'binary options', 'get rich quick', 'financial freedom'
-    ];
-    
-    const sensitiveInfo = [
-        'pin', 'password', 'otp', 'bvn', 'nuban', 'cvv', 'card number',
-        'atm', 'verification code', 'passport', 'driver license', 'nin',
-        'id card', 'means of identification', 'utility bill', 'statement of account'
-    ];
-
-    // Check for red flags
-    redFlags.forEach(flag => {
-        if (lowerText.includes(flag)) {
-            alerts.push(`⚠️ Suspicious: "${flag}"`);
-            riskScore += 10;
-        }
-    });
-
-    // Check for sensitive info requests
-    sensitiveInfo.forEach(info => {
-        if (lowerText.includes(info)) {
-            alerts.push(`🚨 NEVER share your ${info.toUpperCase()}`);
-            riskScore += 30;
-        }
-    });
-
-    // Check for urgency tactics
-    const urgencyWords = ['immediately', 'within 24 hours', 'asap', 'right now', 'today only'];
-    urgencyWords.forEach(word => {
-        if (lowerText.includes(word)) {
-            alerts.push("⏰ False urgency tactic");
-            riskScore += 15;
-        }
-    });
-
-    // Check for phone numbers
-    const phonePatterns = [/\+?\d[\d\s\-\(\)]{8,}\d/g];
-    for (const pattern of phonePatterns) {
-        const matches = text.match(pattern);
-        if (matches) {
-            for (const number of matches) {
-                const cleanedNumber = number.replace(/\D/g, '');
-                if (cleanedNumber.length >= 10) {
-                    if (checkNumberInDatabase(cleanedNumber)) {
-                        alerts.push(`🚨 ${cleanedNumber} is a REPORTED SCAMMER!`);
-                        riskScore += 50;
-                    } else {
-                        alerts.push(`📞 Phone number found: ${cleanedNumber}`);
-                        riskScore += 5;
-                    }
-                }
-            }
-        }
-    }
-
-    // Check for links (phishing)
-    if (lowerText.includes('http://') || lowerText.includes('https://') || lowerText.includes('.com') || lowerText.includes('.ng')) {
-        alerts.push("🔗 Link detected - could be phishing");
-        riskScore += 15;
-    }
-
-    // Determine risk level
-    let riskLevel, emoji, recommendation;
-    if (riskScore >= 40) {
-        riskLevel = "HIGH";
-        emoji = "🔴";
-        recommendation = "DO NOT RESPOND. Block and report immediately!";
-    } else if (riskScore >= 20) {
-        riskLevel = "MEDIUM";
-        emoji = "🟡";
-        recommendation = "Be very careful. Verify the sender through another channel.";
-    } else if (riskScore >= 10) {
-        riskLevel = "LOW-MEDIUM";
-        emoji = "🟠";
-        recommendation = "Some suspicious signs. Proceed with caution.";
-    } else {
-        riskLevel = "LOW";
-        emoji = "🟢";
-        recommendation = "No obvious scam indicators, but always stay cautious.";
-    }
-
-    return { riskLevel, emoji, riskScore, alerts, recommendation };
-}
-
 // ========== REGISTER ALL PUBLIC COMMANDS ==========
 
 // Basic commands
@@ -261,32 +146,72 @@ bot.command('myid', (ctx) => ctx.reply(`Your ID: \`${ctx.from.id}\``, { parse_mo
 bot.command('community', (ctx) => ctx.reply(`👥 Join: ${COMMUNITY_LINK}`));
 bot.command('support', (ctx) => ctx.reply(`💚 *Support:*\nZenith Bank\n4268186069\nJoshua Giwa`, { parse_mode: 'Markdown' }));
 
-// Detection commands
+// ========== CHECK COMMAND (Phone Number OR Message) ==========
 bot.command('check', async (ctx) => {
-    const parts = ctx.message.text.split(' ');
-    let phoneNumber = parts[1];
-    if (!phoneNumber) {
-        ctx.reply('📞 *Usage:* `/check 08012345678`', { parse_mode: 'Markdown' });
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+        ctx.reply(`
+📞 *USAGE:*
+
+/check [phone number] - Check if a number is reported
+/check [message] - Analyze a suspicious message
+
+*Examples:*
+/check 08012345678
+/check URGENT: Your bank account will be closed
+
+👥 ${COMMUNITY_LINK}
+        `, { parse_mode: 'Markdown' });
         return;
     }
-    const formattedNumber = phoneNumber.toString().trim();
-    const reported = checkNumberInDatabase(formattedNumber);
-    let reply = reported ? `🚨 *ALERT!*\n${formattedNumber} is a REPORTED SCAMMER!` : `✅ *CLEAR*\n${formattedNumber} has no reports.`;
     
-    if (!reported) {
-        const featuredPartner = partnerSystem.getNextFeaturedPartner();
-        if (featuredPartner) {
-            reply += `\n\n⭐ *Featured Partner*\n${featuredPartner.businessName}\n📞 ${featuredPartner.contact}`;
-            const buttons = partnerSystem.getPartnerButtons(featuredPartner);
-            if (buttons.length) {
-                await ctx.reply(reply, { parse_mode: 'Markdown', reply_markup: { inline_keyboard: buttons } });
-                return;
+    const input = args.slice(1).join(' ');
+    
+    // Check if input looks like a phone number (starts with 0 and has 10-11 digits)
+    const phoneMatch = input.match(/0[789][01]\d{8}/);
+    
+    if (phoneMatch) {
+        // It's a phone number
+        const formattedNumber = phoneMatch[0];
+        const reported = checkNumberInDatabase(formattedNumber);
+        
+        let reply = reported 
+            ? `🚨 *ALERT!*\n${formattedNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money\n❌ Block immediately`
+            : `✅ *CLEAR*\n${formattedNumber} has no reports.\n\n⚠️ Still be cautious.`;
+        
+        const sponsor = partnerSystem.getCheckSponsorMessage();
+        if (sponsor && !reported) {
+            reply += `\n\n📢 *Sponsored by ${sponsor.businessName}*\n${sponsor.message}\n📞 ${sponsor.contact}`;
+        }
+        
+        ctx.reply(reply + `\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
+    } else {
+        // It's a message - analyze it
+        const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(input, linkModule);
+        
+        let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
+        response += `*📝 Message:*\n${input.substring(0, 300)}${input.length > 300 ? '...' : ''}\n\n`;
+        
+        if (analysis.alerts.length > 0) {
+            response += `*🔍 WHY THIS IS SUSPICIOUS:*\n${analysis.alerts.slice(0, 5).join('\n')}\n\n`;
+        }
+        
+        // Add reported scam link warnings
+        for (const warning of linkWarnings) {
+            if (warning.type === 'reported') {
+                response += `🚨 *REPORTED SCAM LINK DETECTED:* \`${warning.url}\`\n   Reason: ${warning.reason}\n   ⚠️ DO NOT CLICK!\n\n`;
+            } else if (warning.type === 'suspicious') {
+                response += `⚠️ *SUSPICIOUS LINK:* \`${warning.url}\`\n   ${warning.reasons.join('\n   ')}\n\n`;
             }
         }
+        
+        response += `*✅ WHAT YOU SHOULD DO:*\n${analysis.recommendation}\n\n`;
+        response += `👥 ${COMMUNITY_LINK}`;
+        ctx.reply(response, { parse_mode: 'Markdown' });
     }
-    ctx.reply(reply + `\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
 });
 
+// ========== REPORT COMMAND ==========
 bot.command('report', (ctx) => {
     const parts = ctx.message.text.split(' ');
     let phoneNumber = parts[1];
@@ -301,7 +226,161 @@ bot.command('report', (ctx) => {
         return;
     }
     const result = addScammer(formattedNumber, reason, ctx.from.username || ctx.from.id);
-    ctx.reply(`✅ *REPORTED*\n${formattedNumber}\nTotal: ${result.total}`, { parse_mode: 'Markdown' });
+    ctx.reply(`✅ *REPORTED*\n${formattedNumber}\nTotal: ${result.total}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
+});
+
+// ========== LINK CHECK COMMAND ==========
+bot.command('checklink', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+        ctx.reply(`
+🔗 *CHECK A LINK*
+
+Usage: /checklink [url]
+
+Example: /checklink https://fake-gtbank-verify.com
+
+👥 ${COMMUNITY_LINK}
+        `, { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    const url = args[1];
+    const analysis = linkModule.analyzeLink(url);
+    const reported = linkModule.checkLink(url);
+    
+    let response = `🔗 *LINK ANALYSIS*\n\n`;
+    response += `URL: \`${url}\`\n\n`;
+    
+    if (reported) {
+        response += `🚨 *⚠️ SCAM LINK DETECTED!*\n\n`;
+        response += `*Reason:* ${reported.reason}\n`;
+        response += `*Reported by:* ${reported.reportedBy}\n`;
+        response += `*Date:* ${reported.dateReported}\n`;
+        response += `*Risk Level:* ${reported.riskLevel}\n\n`;
+        response += `❌ DO NOT click this link!\n`;
+        response += `❌ DO NOT enter any personal information!\n`;
+    } else if (analysis.riskScore >= 30) {
+        response += `🟡 *SUSPICIOUS LINK*\n\n`;
+        response += `*Risk Score:* ${analysis.riskScore}/100\n`;
+        response += `*Reasons:*\n${analysis.reasons.slice(0, 3).join('\n')}\n\n`;
+        response += `⚠️ Be very careful with this link.\n`;
+        response += `⚠️ Not reported yet, but shows scam indicators.\n`;
+    } else {
+        response += `🟢 *LINK APPEARS SAFE*\n\n`;
+        response += `*Risk Score:* ${analysis.riskScore}/100\n`;
+        response += `*Reasons:* ${analysis.reasons.length > 0 ? analysis.reasons.join('\n') : 'No scam indicators found'}\n\n`;
+        response += `✅ No scam reports for this link.\n`;
+        response += `⚠️ Still be cautious - always verify before clicking.\n`;
+    }
+    
+    response += `\n📞 *To report this link:* /reportlink ${url} [reason]\n👥 ${COMMUNITY_LINK}`;
+    ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// ========== REPORT LINK COMMAND ==========
+bot.command('reportlink', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+        ctx.reply(`
+🔗 *REPORT A SCAM LINK*
+
+Usage: /reportlink [url] [reason]
+
+Example: /reportlink https://fake-site.com "Fake bank login page"
+
+👥 ${COMMUNITY_LINK}
+        `, { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    const url = args[1];
+    const reason = args.slice(2).join(' ') || 'Suspicious link';
+    const reporter = ctx.from.username || ctx.from.id.toString();
+    
+    const result = linkModule.reportLink(url, reason, reporter);
+    
+    if (result.success) {
+        ctx.reply(`
+✅ *LINK REPORTED!*
+
+URL: \`${url}\`
+Reason: ${reason}
+Total reported links: ${result.total}
+
+Thank you for protecting others!
+
+👥 ${COMMUNITY_LINK}
+        `, { parse_mode: 'Markdown' });
+        
+        await bot.telegram.sendMessage(YOUR_ID, `
+🔗 *NEW SCAM LINK REPORTED*
+
+URL: ${url}
+Reason: ${reason}
+Reported by: @${ctx.from.username || reporter}
+Total: ${result.total}
+        `, { parse_mode: 'Markdown' });
+    } else {
+        ctx.reply(`
+⚠️ *Link already reported*
+
+URL: \`${url}\`
+Reason: ${result.existing.reason}
+Reported by: ${result.existing.reportedBy}
+
+👥 ${COMMUNITY_LINK}
+        `, { parse_mode: 'Markdown' });
+    }
+});
+
+// ========== PARTNERS COMMAND (View Partners) ==========
+bot.command('partners', async (ctx) => {
+    console.log(`[DEBUG] /partners command from ${ctx.from.id}`);
+    try {
+        await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK);
+    } catch (err) {
+        console.error(`[ERROR] /partners failed:`, err);
+        await ctx.reply('❌ Error loading partners. Please try again later.');
+    }
+});
+
+// ========== SIMPLIFIED PARTNER COMMAND (WORKING) ==========
+bot.command('partner', (ctx) => {
+    console.log(`[DEBUG] /partner command from ${ctx.from.id}`);
+    ctx.reply(`
+🤝 *PARTNER PROGRAM*
+
+Partner with Nigeria's fastest-growing scam detection network.
+
+*📋 PARTNER BENEFITS*
+
+*Standard Partner* - ₦11,000/month
+✅ Business contact in /partners
+✅ "⭐ Standard Partner" badge
+✅ Featured in daily security tips
+✅ FREE 3-week trial available
+
+*Premium Partner* - ₦17,000/month
+✅ Everything in Standard
+✅ "💎 Premium Partner" badge
+✅ Business spotlight in group
+✅ Sponsorship message in /check responses
+✅ FREE 1-week trial available
+
+*🎁 FREE TRIALS*
+• Standard: 3 weeks free
+• Premium: 1 week free
+
+*📞 HOW TO REGISTER*
+Contact @JoshuaGiwa on Telegram
+or WhatsApp: 09025839789
+
+*👥 View our partners:* /partners
+*👥 Join community:* ${COMMUNITY_LINK}
+
+🇳🇬 Partner with us to reach security-conscious Nigerians.
+    `, { parse_mode: 'Markdown' });
 });
 
 // Education commands
@@ -337,22 +416,11 @@ bot.command('whatis', (ctx) => {
 });
 
 bot.command('stats', (ctx) => {
-    ctx.reply(`📊 *STATS*\nScammers: ${getScammerCount()}\nPartners: ${partnerSystem.getPartnersCount()}\nTips: ${dailyTips.length}\nTerms: ${Object.keys(scamTerms).length}`, { parse_mode: 'Markdown' });
+    ctx.reply(`📊 *STATS*\nScammers: ${getScammerCount()}\nLinks: ${linkModule.getReportedLinkCount()}\nPartners: ${partnerSystem.getPartnersCount()}\nTips: ${dailyTips.length}\nTerms: ${Object.keys(scamTerms).length}`, { parse_mode: 'Markdown' });
 });
 
-// Partner commands
-bot.command('partners', async (ctx) => await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK));
-bot.command('partner', async (ctx) => await partnerSystem.handlePartnerCommand(ctx, COMMUNITY_LINK, YOUR_ID, bot));
-
 // Register admin commands
-registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms);
-
-// Register partner admin commands
-bot.command('approve', async (ctx) => await partnerSystem.handleApprove(ctx, bot, YOUR_ID));
-bot.command('reject', async (ctx) => await partnerSystem.handleReject(ctx, bot, YOUR_ID));
-bot.command('verify', async (ctx) => await partnerSystem.handleVerify(ctx, bot, YOUR_ID));
-bot.command('find', (ctx) => partnerSystem.handleFind(ctx, YOUR_ID));
-bot.command('pending', (ctx) => partnerSystem.handlePending(ctx, YOUR_ID));
+registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms, linkModule);
 
 // ========== HANDLE PHOTOS (for OCR) ==========
 bot.on('photo', async (ctx) => {
@@ -370,7 +438,8 @@ bot.on('photo', async (ctx) => {
         return;
     }
     
-    const analysis = analyzeMessage(extractedText);
+    const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(extractedText, linkModule);
+    
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
     response += `*Extracted:* ${extractedText.substring(0, 200)}...\n\n`;
     response += `*Findings:* ${analysis.alerts.slice(0, 4).join(', ') || 'None'}\n\n`;
@@ -378,7 +447,6 @@ bot.on('photo', async (ctx) => {
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    // Extract and check phone numbers from the image
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
@@ -393,7 +461,6 @@ bot.on('document', async (ctx) => {
     const document = ctx.message.document;
     const mimeType = document.mime_type;
     
-    // Only process image files
     if (!mimeType || !mimeType.startsWith('image/')) {
         await ctx.reply('📄 *Please send an image file* (jpg, png) for OCR analysis.\n\nFor text messages, just forward them directly.', { parse_mode: 'Markdown' });
         return;
@@ -412,7 +479,8 @@ bot.on('document', async (ctx) => {
         return;
     }
     
-    const analysis = analyzeMessage(extractedText);
+    const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(extractedText, linkModule);
+    
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
     response += `*Extracted:* ${extractedText.substring(0, 300)}${extractedText.length > 300 ? '...' : ''}\n\n`;
     response += `*Findings:*\n${analysis.alerts.slice(0, 4).join('\n') || 'No obvious scam indicators'}\n\n`;
@@ -420,7 +488,6 @@ bot.on('document', async (ctx) => {
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    // Extract and check phone numbers from the image
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
@@ -430,44 +497,32 @@ bot.on('document', async (ctx) => {
     }
 });
 
-// ========== AUTO-ANALYZE TEXT MESSAGES ==========
-bot.on('text', async (ctx) => {
-    const message = ctx.message.text;
-    if (message.startsWith('/')) return;
-    
-    const analysis = analyzeMessage(message);
-    
-    // Only respond if risk score is 10 or higher (catches more scams)
-    if (analysis.riskScore >= 10) {
-        let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
-        response += `*Findings:*\n${analysis.alerts.slice(0, 4).join('\n')}\n\n`;
-        response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
-        ctx.reply(response, { parse_mode: 'Markdown' });
-    }
-});
-
-// ========== DAILY TIPS SCHEDULER (FIXED - Sends Once Per Day) ==========
+// ========== DAILY TIPS SCHEDULER ==========
 let lastTipDate = null;
 
 async function sendDailyTipToGroup() {
     if (dailyTips.length === 0) return;
     
     const now = new Date();
-    const nigeriaTime = new Date(now.getTime() + 3600000); // UTC+1
+    const nigeriaTime = new Date(now.getTime() + 3600000);
     const currentHour = nigeriaTime.getUTCHours();
     const currentDate = nigeriaTime.toDateString();
     
-    // Only send at 8am AND not sent today yet
     if (currentHour === 8 && lastTipDate !== currentDate) {
         const dayOfMonth = nigeriaTime.getUTCDate();
         const tipIndex = (dayOfMonth - 1) % dailyTips.length;
-        const todaysTip = dailyTips[tipIndex];
+        let todaysTip = dailyTips[tipIndex];
+        
+        const sponsorMessage = partnerSystem.getDailyTipSponsorMessage();
+        if (sponsorMessage) {
+            todaysTip += sponsorMessage;
+        }
         
         const message = `${todaysTip}\n\n🇳🇬 Stay safe! Report scammers to @JoshuaGiwaBot`;
         
         try {
             await bot.telegram.sendMessage(GROUP_ID, message, { parse_mode: 'Markdown' });
-            console.log(`📰 Daily tip sent at ${nigeriaTime.toLocaleTimeString()} - ${currentDate}`);
+            console.log(`📰 Daily tip sent at ${nigeriaTime.toLocaleTimeString()}`);
             lastTipDate = currentDate;
         } catch (err) {
             console.log(`❌ Failed to send tip: ${err.message}`);
@@ -475,27 +530,15 @@ async function sendDailyTipToGroup() {
     }
 }
 
-// Check every minute
 setInterval(sendDailyTipToGroup, 60 * 1000);
-console.log('⏰ Daily tip scheduler started - will send once per day at 8am Nigeria time');
+console.log('⏰ Daily tip scheduler started');
 
-// ========== TEST TIP COMMAND (Admin Only) ==========
 bot.command('testtip', async (ctx) => {
-    if (ctx.from.id !== YOUR_ID) {
-        ctx.reply('❌ Admin only.');
-        return;
-    }
-    
-    if (dailyTips.length === 0) {
-        ctx.reply('⚠️ No tips available.');
-        return;
-    }
-    
+    if (ctx.from.id !== YOUR_ID) return ctx.reply('❌ Admin only.');
     const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
-    
     try {
-        await bot.telegram.sendMessage(GROUP_ID, `${randomTip}\n\n🧪 *TEST MESSAGE* - Daily tips are working!`, { parse_mode: 'Markdown' });
-        ctx.reply('✅ Test tip sent to group!');
+        await bot.telegram.sendMessage(GROUP_ID, `${randomTip}\n\n🧪 *TEST*`, { parse_mode: 'Markdown' });
+        ctx.reply('✅ Test tip sent');
     } catch (err) {
         ctx.reply(`❌ Failed: ${err.message}`);
     }
@@ -516,8 +559,8 @@ bot.launch().then(() => {
     console.log('========================================');
     console.log('✅ NIGERIA SCAM DETECTOR IS LIVE!');
     console.log(`📊 ${getScammerCount()} scammers reported`);
+    console.log(`🔗 ${linkModule.getReportedLinkCount()} scam links reported`);
     console.log(`🤝 ${partnerSystem.getPartnersCount()} partners`);
-    console.log(`👥 ${COMMUNITY_LINK}`);
     console.log('========================================');
 }).catch(err => { console.error('❌ Launch failed:', err); process.exit(1); });
 
