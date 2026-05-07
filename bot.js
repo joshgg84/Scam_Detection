@@ -446,21 +446,60 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// ========== DAILY TIPS SCHEDULER ==========
+// ========== DAILY TIPS SCHEDULER (FIXED - Sends Once Per Day) ==========
+let lastTipDate = null;
+
 async function sendDailyTipToGroup() {
     if (dailyTips.length === 0) return;
+    
     const now = new Date();
-    const nigeriaHour = new Date(now.getTime() + 3600000).getUTCHours();
-    if (nigeriaHour === 8) {
-        const tipIndex = new Date().getDate() % dailyTips.length;
+    const nigeriaTime = new Date(now.getTime() + 3600000); // UTC+1
+    const currentHour = nigeriaTime.getUTCHours();
+    const currentDate = nigeriaTime.toDateString();
+    
+    // Only send at 8am AND not sent today yet
+    if (currentHour === 8 && lastTipDate !== currentDate) {
+        const dayOfMonth = nigeriaTime.getUTCDate();
+        const tipIndex = (dayOfMonth - 1) % dailyTips.length;
+        const todaysTip = dailyTips[tipIndex];
+        
+        const message = `${todaysTip}\n\n🇳🇬 Stay safe! Report scammers to @JoshuaGiwaBot`;
+        
         try {
-            await bot.telegram.sendMessage(GROUP_ID, `${dailyTips[tipIndex]}\n\n🇳🇬 Stay safe!`, { parse_mode: 'Markdown' });
-            console.log('📰 Daily tip sent');
-        } catch (err) { console.log('❌ Tip error:', err.message); }
+            await bot.telegram.sendMessage(GROUP_ID, message, { parse_mode: 'Markdown' });
+            console.log(`📰 Daily tip sent at ${nigeriaTime.toLocaleTimeString()} - ${currentDate}`);
+            lastTipDate = currentDate;
+        } catch (err) {
+            console.log(`❌ Failed to send tip: ${err.message}`);
+        }
     }
 }
-setInterval(sendDailyTipToGroup, 60000);
-console.log('⏰ Daily tip scheduler started');
+
+// Check every minute
+setInterval(sendDailyTipToGroup, 60 * 1000);
+console.log('⏰ Daily tip scheduler started - will send once per day at 8am Nigeria time');
+
+// ========== TEST TIP COMMAND (Admin Only) ==========
+bot.command('testtip', async (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    
+    if (dailyTips.length === 0) {
+        ctx.reply('⚠️ No tips available.');
+        return;
+    }
+    
+    const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
+    
+    try {
+        await bot.telegram.sendMessage(GROUP_ID, `${randomTip}\n\n🧪 *TEST MESSAGE* - Daily tips are working!`, { parse_mode: 'Markdown' });
+        ctx.reply('✅ Test tip sent to group!');
+    } catch (err) {
+        ctx.reply(`❌ Failed: ${err.message}`);
+    }
+});
 
 // ========== WEB SERVER ==========
 const PORT = process.env.PORT || 3000;
