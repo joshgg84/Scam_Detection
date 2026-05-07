@@ -12,16 +12,20 @@ const STORAGE_FILES = [
     { name: "tips.js", description: "💡 100+ security tips" },
     { name: "bot.js", description: "🤖 Main bot code" },
     { name: "admin.js", description: "👑 Admin commands" },
-    { name: "partner.js", description: "🤝 Partner system module" },
+    { name: "detection.js", description: "🔍 Scam detection logic" },
+    { name: "partner.js", description: "🤝 Partner core functions" },
+    { name: "partnerCommands.js", description: "📝 Partner user commands" },
+    { name: "links.js", description: "🔗 Link detection module" },
     { name: "ocr.js", description: "👁️ OCR module for reading screenshots" },
     { name: "partners.json", description: "🏪 Approved partners directory" },
     { name: "pendingPartners.json", description: "⏳ Pending partner registrations" },
     { name: "terms.json", description: "📖 Scam terms dictionary" },
+    { name: "links.json", description: "🔗 Reported scam links database" },
     { name: "package.json", description: "📦 Dependencies list" }
 ];
 
 // ========== ADMIN HELP MESSAGE ==========
-function getAdminHelpMessage(partnerSystem, dailyTips, scamTerms) {
+function getAdminHelpMessage(partnerSystem, dailyTips, scamTerms, linkModule) {
     return `
 👑 *ADMIN COMMANDS*
 
@@ -40,6 +44,13 @@ function getAdminHelpMessage(partnerSystem, dailyTips, scamTerms) {
 /edittip [number] [text] - Edit a tip
 /deletetip [number] - Delete a tip
 
+*Link Management:*
+/listlinks - View all reported scam links
+/deletelink [id] - Delete a reported scam link
+/addwhitelist [domain] - Add domain to whitelist
+/removewhitelist [domain] - Remove domain from whitelist
+/linkstats - Show link database stats
+
 *Database Management:*
 /listscammers - View all reported scammers
 /scammers - Same as /listscammers
@@ -51,6 +62,7 @@ Approved partners: ${partnerSystem.getPartnersCount()}
 Pending registrations: ${partnerSystem.getPendingCount()}
 Total tips: ${dailyTips.length}
 Total scam terms: ${Object.keys(scamTerms).length}
+Total reported links: ${linkModule?.getReportedLinkCount() || 0}
     `;
 }
 
@@ -357,8 +369,125 @@ function registerDatabaseCommands(bot, YOUR_ID) {
     });
 }
 
+// ========== LINK MANAGEMENT COMMANDS ==========
+function registerLinkCommands(bot, YOUR_ID, linkModule) {
+    
+    bot.command('listlinks', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const links = linkModule.getAllReportedLinks();
+        if (links.length === 0) {
+            ctx.reply('📋 No reported scam links yet.');
+            return;
+        }
+        
+        let message = `🔗 *REPORTED SCAM LINKS (${links.length})*\n\n`;
+        for (let i = 0; i < Math.min(20, links.length); i++) {
+            const l = links[i];
+            message += `${i+1}. \`${l.url}\`\n`;
+            message += `   📝 ${l.reason}\n`;
+            message += `   📅 ${l.dateReported} | ⚠️ ${l.riskLevel}\n`;
+            message += `   🆔 ID: ${l.id}\n\n`;
+        }
+        
+        if (links.length > 20) {
+            message += `\n...and ${links.length - 20} more. Use /deletelink [id] to remove.`;
+        }
+        
+        ctx.reply(message, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('deletelink', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        if (args.length < 2) {
+            ctx.reply('📝 *Usage:* `/deletelink [link_id]`\n\nUse /listlinks to find the ID of the link to delete.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const linkId = parseInt(args[1]);
+        if (isNaN(linkId)) {
+            ctx.reply('❌ Invalid link ID. Use the number from /listlinks.');
+            return;
+        }
+        
+        const result = linkModule.deleteReportedLink(linkId);
+        if (result.success) {
+            ctx.reply(`✅ ${result.message}`, { parse_mode: 'Markdown' });
+        } else {
+            ctx.reply(`❌ ${result.message}`, { parse_mode: 'Markdown' });
+        }
+    });
+    
+    bot.command('addwhitelist', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        if (args.length < 2) {
+            ctx.reply('📝 *Usage:* `/addwhitelist [domain]`\n\nExample: /addwhitelist mybank.com\n\nThis domain will never be flagged as suspicious.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const domain = args[1].toLowerCase();
+        const result = linkModule.addToWhitelist(domain);
+        ctx.reply(`${result.success ? '✅' : '⚠️'} ${result.message}`, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('removewhitelist', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        if (args.length < 2) {
+            ctx.reply('📝 *Usage:* `/removewhitelist [domain]`\n\nExample: /removewhitelist mybank.com', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const domain = args[1].toLowerCase();
+        const result = linkModule.removeFromWhitelist(domain);
+        ctx.reply(`${result.success ? '✅' : '⚠️'} ${result.message}`, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('linkstats', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const count = linkModule.getReportedLinkCount();
+        const data = linkModule.loadLinks();
+        const whitelistCount = data.whitelist.length;
+        
+        ctx.reply(`
+🔗 *LINK DATABASE STATS*
+
+📊 Total reported scam links: ${count}
+✅ Whitelisted domains: ${whitelistCount}
+📅 Database created: ${data.settings.dateCreated || 'Unknown'}
+
+*Commands:*
+/listlinks - View all reported links
+/deletelink [id] - Remove a scam link
+/addwhitelist [domain] - Trust a domain
+/removewhitelist [domain] - Untrust a domain
+        `, { parse_mode: 'Markdown' });
+    });
+}
+
 // ========== REGISTER ALL ADMIN COMMANDS ==========
-function registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms) {
+function registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms, linkModule) {
     
     // Admin help command
     bot.command('adminhelp', (ctx) => {
@@ -366,7 +495,7 @@ function registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms
             ctx.reply('❌ Admin only.');
             return;
         }
-        ctx.reply(getAdminHelpMessage(partnerSystem, dailyTips, scamTerms), { parse_mode: 'Markdown' });
+        ctx.reply(getAdminHelpMessage(partnerSystem, dailyTips, scamTerms, linkModule), { parse_mode: 'Markdown' });
     });
     
     // Tip management
@@ -375,8 +504,10 @@ function registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms
     // Database management
     registerDatabaseCommands(bot, YOUR_ID);
     
-    // Partner admin commands (passed through from partner.js)
-    // These will be registered in bot.js since they need partnerSystem
+    // Link management (if linkModule is provided)
+    if (linkModule) {
+        registerLinkCommands(bot, YOUR_ID, linkModule);
+    }
     
     console.log('✅ Admin commands registered');
 }
