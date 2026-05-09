@@ -4,7 +4,7 @@
 
 const { Telegraf } = require('telegraf');
 const fs = require('fs');
-const { addScammer, getScammerCount, getAllScammers } = require('./scammers.js');
+const { addScammer, getScammerCount, getAllScammers, getRecentScammers } = require('./scammers.js');
 const { dailyTips } = require('./tips.js');
 
 // Import modules
@@ -12,6 +12,7 @@ const partnerSystem = require('./partner.js');
 const ocr = require('./ocr.js');
 const linkModule = require('./links.js');
 const detection = require('./detection.js');
+const referralSystem = require('./referrals.js');
 const { registerAdminCommands } = require('./admin.js');
 
 // ========== CONFIGURATION ==========
@@ -80,6 +81,15 @@ function checkNumberInDatabase(phoneNumber) {
     });
 }
 
+function getGroupMemberCount() {
+    try {
+        // This is an estimate - Telegram doesn't provide exact count easily
+        return "growing";
+    } catch (err) {
+        return "many";
+    }
+}
+
 function getHelpMessage() {
     return `
 📚 *NIGERIA SCAM DETECTOR - HELP*
@@ -97,6 +107,9 @@ function getHelpMessage() {
 /report [number] [reason] - Report a scammer
 /checklink [url] - Check if a link is a scam
 /reportlink [url] [reason] - Report a scam link
+/referral - Get your unique referral link
+/leaderboard - View top inviters
+/myreferrals - Check your referral stats
 
 *Education:*
 /scamtypes - Learn common scams
@@ -140,7 +153,27 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 // ========== REGISTER ALL PUBLIC COMMANDS ==========
 
 // Basic commands
-bot.start((ctx) => ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' }));
+bot.start(async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    const startParam = args[1];
+    
+    if (startParam && startParam.startsWith('ref_')) {
+        const referrerId = startParam.split('_')[1];
+        const newUserId = ctx.from.id;
+        const newUsername = ctx.from.username || ctx.from.first_name;
+        
+        await referralSystem.handleReferralStart(ctx, referrerId, newUserId, newUsername);
+        return;
+    }
+    
+    if (startParam === 'referral') {
+        await referralSystem.handleReferralCommand(ctx);
+        return;
+    }
+    
+    ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' });
+});
+
 bot.command('help', (ctx) => ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' }));
 bot.command('myid', (ctx) => ctx.reply(`Your ID: \`${ctx.from.id}\``, { parse_mode: 'Markdown' }));
 bot.command('community', (ctx) => ctx.reply(`👥 Join: ${COMMUNITY_LINK}`));
@@ -166,25 +199,31 @@ bot.command('check', async (ctx) => {
     }
     
     const input = args.slice(1).join(' ');
-    
-    // Check if input looks like a phone number (starts with 0 and has 10-11 digits)
     const phoneMatch = input.match(/0[789][01]\d{8}/);
+    const userId = ctx.from.id;
     
     if (phoneMatch) {
         // It's a phone number
         const formattedNumber = phoneMatch[0];
         const reported = checkNumberInDatabase(formattedNumber);
         
-        let reply = reported 
+        let resultText = reported 
             ? `🚨 *ALERT!*\n${formattedNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money\n❌ Block immediately`
             : `✅ *CLEAR*\n${formattedNumber} has no reports.\n\n⚠️ Still be cautious.`;
         
         const sponsor = partnerSystem.getCheckSponsorMessage();
         if (sponsor && !reported) {
-            reply += `\n\n📢 *Sponsored by ${sponsor.businessName}*\n${sponsor.message}\n📞 ${sponsor.contact}`;
+            resultText += `\n\n📢 *Sponsored by ${sponsor.businessName}*\n${sponsor.message}`;
         }
         
-        ctx.reply(reply + `\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
+        // Add referral section
+        const { fullText, buttons } = referralSystem.addReferralSectionToCheck(resultText, userId, 0);
+        
+        await ctx.reply(fullText, {
+            parse_mode: 'Markdown',
+            reply_markup: buttons
+        });
+        
     } else {
         // It's a message - analyze it
         const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(input, linkModule);
@@ -196,18 +235,21 @@ bot.command('check', async (ctx) => {
             response += `*🔍 WHY THIS IS SUSPICIOUS:*\n${analysis.alerts.slice(0, 5).join('\n')}\n\n`;
         }
         
-        // Add reported scam link warnings
         for (const warning of linkWarnings) {
             if (warning.type === 'reported') {
-                response += `🚨 *REPORTED SCAM LINK DETECTED:* \`${warning.url}\`\n   Reason: ${warning.reason}\n   ⚠️ DO NOT CLICK!\n\n`;
-            } else if (warning.type === 'suspicious') {
-                response += `⚠️ *SUSPICIOUS LINK:* \`${warning.url}\`\n   ${warning.reasons.join('\n   ')}\n\n`;
+                response += `🚨 *REPORTED SCAM LINK:* \`${warning.url}\`\n   Reason: ${warning.reason}\n   ⚠️ DO NOT CLICK!\n\n`;
             }
         }
         
         response += `*✅ WHAT YOU SHOULD DO:*\n${analysis.recommendation}\n\n`;
-        response += `👥 ${COMMUNITY_LINK}`;
-        ctx.reply(response, { parse_mode: 'Markdown' });
+        
+        // Add referral section
+        const { fullText, buttons } = referralSystem.addReferralSectionToCheck(response, userId, analysis.riskScore);
+        
+        await ctx.reply(fullText, {
+            parse_mode: 'Markdown',
+            reply_markup: buttons
+        });
     }
 });
 
@@ -259,19 +301,15 @@ Example: /checklink https://fake-gtbank-verify.com
         response += `*Date:* ${reported.dateReported}\n`;
         response += `*Risk Level:* ${reported.riskLevel}\n\n`;
         response += `❌ DO NOT click this link!\n`;
-        response += `❌ DO NOT enter any personal information!\n`;
     } else if (analysis.riskScore >= 30) {
         response += `🟡 *SUSPICIOUS LINK*\n\n`;
         response += `*Risk Score:* ${analysis.riskScore}/100\n`;
         response += `*Reasons:*\n${analysis.reasons.slice(0, 3).join('\n')}\n\n`;
         response += `⚠️ Be very careful with this link.\n`;
-        response += `⚠️ Not reported yet, but shows scam indicators.\n`;
     } else {
         response += `🟢 *LINK APPEARS SAFE*\n\n`;
         response += `*Risk Score:* ${analysis.riskScore}/100\n`;
-        response += `*Reasons:* ${analysis.reasons.length > 0 ? analysis.reasons.join('\n') : 'No scam indicators found'}\n\n`;
         response += `✅ No scam reports for this link.\n`;
-        response += `⚠️ Still be cautious - always verify before clicking.\n`;
     }
     
     response += `\n📞 *To report this link:* /reportlink ${url} [reason]\n👥 ${COMMUNITY_LINK}`;
@@ -301,85 +339,58 @@ Example: /reportlink https://fake-site.com "Fake bank login page"
     const result = linkModule.reportLink(url, reason, reporter);
     
     if (result.success) {
-        ctx.reply(`
-✅ *LINK REPORTED!*
-
-URL: \`${url}\`
-Reason: ${reason}
-Total reported links: ${result.total}
-
-Thank you for protecting others!
-
-👥 ${COMMUNITY_LINK}
-        `, { parse_mode: 'Markdown' });
+        ctx.reply(`✅ *LINK REPORTED!*\n\nURL: \`${url}\`\nReason: ${reason}\nTotal reported links: ${result.total}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
         
-        await bot.telegram.sendMessage(YOUR_ID, `
-🔗 *NEW SCAM LINK REPORTED*
-
-URL: ${url}
-Reason: ${reason}
-Reported by: @${ctx.from.username || reporter}
-Total: ${result.total}
-        `, { parse_mode: 'Markdown' });
+        await bot.telegram.sendMessage(YOUR_ID, `🔗 *NEW SCAM LINK REPORTED*\n\nURL: ${url}\nReason: ${reason}\nReported by: @${ctx.from.username || reporter}`);
     } else {
-        ctx.reply(`
-⚠️ *Link already reported*
-
-URL: \`${url}\`
-Reason: ${result.existing.reason}
-Reported by: ${result.existing.reportedBy}
-
-👥 ${COMMUNITY_LINK}
-        `, { parse_mode: 'Markdown' });
+        ctx.reply(`⚠️ *Link already reported*\n\nURL: \`${url}\`\nReason: ${result.existing.reason}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     }
 });
 
-// ========== PARTNERS COMMAND (View Partners) ==========
+// ========== REFERRAL COMMANDS ==========
+bot.command('referral', async (ctx) => {
+    await referralSystem.handleReferralCommand(ctx);
+});
+
+bot.command('leaderboard', async (ctx) => {
+    await referralSystem.handleLeaderboardCommand(ctx);
+});
+
+bot.command('myreferrals', async (ctx) => {
+    await referralSystem.handleMyReferralsCommand(ctx);
+});
+
+// ========== PARTNERS COMMAND ==========
 bot.command('partners', async (ctx) => {
-    console.log(`[DEBUG] /partners command from ${ctx.from.id}`);
     try {
         await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK);
     } catch (err) {
-        console.error(`[ERROR] /partners failed:`, err);
-        await ctx.reply('❌ Error loading partners. Please try again later.');
+        console.error('Partners error:', err);
+        ctx.reply(`🤝 *PARTNERS DIRECTORY*\n\nNo partners yet. Be the first!\nContact @JoshuaGiwa to register.\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     }
 });
 
-// ========== SIMPLIFIED PARTNER COMMAND (WORKING) ==========
+// ========== SIMPLIFIED PARTNER COMMAND ==========
 bot.command('partner', (ctx) => {
-    console.log(`[DEBUG] /partner command from ${ctx.from.id}`);
     ctx.reply(`
 🤝 *PARTNER PROGRAM*
-
-Partner with Nigeria's fastest-growing scam detection network.
-
-*📋 PARTNER BENEFITS*
 
 *Standard Partner* - ₦11,000/month
 ✅ Business contact in /partners
 ✅ "⭐ Standard Partner" badge
-✅ Featured in daily security tips
-✅ FREE 3-week trial available
+✅ Featured in daily tips
+✅ FREE 3-week trial
 
 *Premium Partner* - ₦17,000/month
 ✅ Everything in Standard
 ✅ "💎 Premium Partner" badge
-✅ Business spotlight in group
-✅ Sponsorship message in /check responses
-✅ FREE 1-week trial available
+✅ Sponsorship in /check responses
+✅ FREE 1-week trial
 
-*🎁 FREE TRIALS*
-• Standard: 3 weeks free
-• Premium: 1 week free
+*Register:* Contact @JoshuaGiwa
+WhatsApp: 09025839789
 
-*📞 HOW TO REGISTER*
-Contact @JoshuaGiwa on Telegram
-or WhatsApp: 09025839789
-
-*👥 View our partners:* /partners
-*👥 Join community:* ${COMMUNITY_LINK}
-
-🇳🇬 Partner with us to reach security-conscious Nigerians.
+👥 ${COMMUNITY_LINK}
     `, { parse_mode: 'Markdown' });
 });
 
@@ -394,7 +405,7 @@ bot.command('scamtypes', (ctx) => {
     const commonScams = getCommonScams();
     if (commonScams.length === 0) return ctx.reply('No scam terms loaded.');
     let message = `📚 *COMMON SCAMS*\n\n`;
-    for (const key of commonScams) {
+    for (const key of commonScams.slice(0, 8)) {
         const term = scamTerms[key];
         if (term) message += `${term.title}\n   ${(term.content || term).split('.')[0]}.\n\n`;
     }
@@ -451,7 +462,7 @@ bot.on('photo', async (ctx) => {
     if (phoneMatch) {
         for (const phone of phoneMatch) {
             const reported = checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found in image:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
 });
@@ -492,7 +503,7 @@ bot.on('document', async (ctx) => {
     if (phoneMatch) {
         for (const phone of phoneMatch) {
             const reported = checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found in file:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER! Do not engage.' : 'Not reported yet. Still be cautious.'}`, { parse_mode: 'Markdown' });
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
 });
@@ -544,15 +555,40 @@ bot.command('testtip', async (ctx) => {
     }
 });
 
+// ========== CALLBACK HANDLERS ==========
+bot.action(/copy_ref_\d+/, async (ctx) => {
+    await referralSystem.handleReferralCallback(ctx);
+});
+
+bot.action('copy_group', async (ctx) => {
+    await referralSystem.handleReferralCallback(ctx);
+});
+
+bot.action('show_leaderboard', async (ctx) => {
+    await referralSystem.handleReferralCallback(ctx);
+});
+
+bot.action(/my_stats_\d+/, async (ctx) => {
+    await referralSystem.handleReferralCallback(ctx);
+});
+
+bot.action('get_referral_link', async (ctx) => {
+    await referralSystem.handleReferralCallback(ctx);
+});
+
 // ========== WEB SERVER ==========
 const PORT = process.env.PORT || 3000;
 if (process.env.PORT) {
     const express = require('express');
     const app = express();
     app.get('/', (req, res) => res.send('Bot running'));
+    app.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
     app.listen(PORT, () => console.log(`Web server on port ${PORT}`));
     setInterval(() => console.log('🔄 Ping'), 5 * 60000);
 }
+
+// ========== START LEADERBOARD SCHEDULER ==========
+referralSystem.startLeaderboardScheduler(bot);
 
 // ========== LAUNCH ==========
 bot.launch().then(() => {
