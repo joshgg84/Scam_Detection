@@ -146,16 +146,17 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 
 // ========== TESTIMONIAL COLLECTION FUNCTIONS ==========
 async function askForTestimonial(ctx, resultType, details) {
-    const userId = ctx.from.id;
-    
     const buttons = {
         inline_keyboard: [
             [
-                { text: "✅ Yes, it helped me", callback_data: `testimonial_yes_${resultType}_${details}` },
+                { text: "✅ Yes, it helped me", callback_data: `testimonial_yes_${resultType}` },
                 { text: "❌ No, not helpful", callback_data: "testimonial_no" }
             ]
         ]
     };
+    
+    // Store details for later use
+    userTestimonialMode[ctx.from.id] = { resultType, details, awaitingTestimonial: true };
     
     await ctx.reply("🤝 *Was this helpful?*\n\nYour feedback helps me improve the bot and protect more Nigerians.\n\nJust one click.", {
         parse_mode: 'Markdown',
@@ -238,7 +239,7 @@ bot.command('check', async (ctx) => {
         });
         
         // Ask for testimonial
-        await askForTestimonial(ctx, 'phone', encodeURIComponent(formattedNumber));
+        await askForTestimonial(ctx, 'phone', formattedNumber);
         
     } else {
         // It's a message - analyze it
@@ -268,7 +269,7 @@ bot.command('check', async (ctx) => {
         });
         
         // Ask for testimonial
-        await askForTestimonial(ctx, 'message', encodeURIComponent(input.substring(0, 50)));
+        await askForTestimonial(ctx, 'message', input.substring(0, 50));
     }
 });
 
@@ -318,7 +319,7 @@ Example: /checklink https://fake-gtbank-verify.com
     await ctx.reply(response, { parse_mode: 'Markdown' });
     
     // Ask for testimonial
-    await askForTestimonial(ctx, 'link', encodeURIComponent(url));
+    await askForTestimonial(ctx, 'link', url);
 });
 
 // ========== REPORT COMMAND ==========
@@ -490,7 +491,7 @@ bot.on('photo', async (ctx) => {
     }
     
     // Ask for testimonial
-    await askForTestimonial(ctx, 'image', encodeURIComponent(extractedText.substring(0, 50)));
+    await askForTestimonial(ctx, 'image', extractedText.substring(0, 50));
 });
 
 // ========== HANDLE DOCUMENTS/FILES (for OCR) ==========
@@ -534,21 +535,30 @@ bot.on('document', async (ctx) => {
     }
     
     // Ask for testimonial
-    await askForTestimonial(ctx, 'file', encodeURIComponent(extractedText.substring(0, 50)));
+    await askForTestimonial(ctx, 'file', extractedText.substring(0, 50));
 });
 
 // ========== TESTIMONIAL CALLBACK HANDLERS ==========
-bot.action(/testimonial_yes_(.+)_(.+)/, async (ctx) => {
+bot.action(/testimonial_yes_(.+)/, async (ctx) => {
     const resultType = ctx.match[1];
-    const details = decodeURIComponent(ctx.match[2]);
     const userId = ctx.from.id;
     const username = ctx.from.username || ctx.from.first_name;
     const fullName = ctx.from.first_name || username;
     
+    // Get stored details
+    const storedData = userTestimonialMode[userId];
+    const details = storedData ? storedData.details : 'Not specified';
+    
     await ctx.answerCbQuery("Great! Please send your testimonial in the next message.");
     
-    // Store that user is in testimonial mode
-    userTestimonialMode[userId] = { resultType, details, username, fullName };
+    // Update stored mode
+    userTestimonialMode[userId] = { 
+        resultType, 
+        details, 
+        username, 
+        fullName, 
+        awaitingTestimonial: true 
+    };
     
     await ctx.reply("📝 *Please send your testimonial now*\n\nExample:\n_"This bot saved me from losing ₦50k to a fake loan agent. Thank you!"_\n\nJust type your message. Keep it short (2-3 sentences).", {
         parse_mode: 'Markdown'
@@ -556,6 +566,9 @@ bot.action(/testimonial_yes_(.+)_(.+)/, async (ctx) => {
 });
 
 bot.action('testimonial_no', async (ctx) => {
+    const userId = ctx.from.id;
+    delete userTestimonialMode[userId];
+    
     await ctx.answerCbQuery("Sorry it wasn't helpful. I'm always improving.");
     await ctx.reply("Thanks for your honesty. I'll keep making the bot better. 🙏");
 });
@@ -566,7 +579,7 @@ bot.on('text', async (ctx) => {
     const message = ctx.message.text;
     
     // Check if user is in testimonial mode
-    if (userTestimonialMode[userId] && !message.startsWith('/')) {
+    if (userTestimonialMode[userId] && userTestimonialMode[userId].awaitingTestimonial && !message.startsWith('/')) {
         const testimonialData = userTestimonialMode[userId];
         const testimonial = message.trim();
         
@@ -574,10 +587,10 @@ bot.on('text', async (ctx) => {
         const adminMessage = `
 📝 *NEW TESTIMONIAL*
 
-👤 *User:* ${testimonialData.fullName} (@${testimonialData.username})
+👤 *User:* ${testimonialData.fullName || 'Anonymous'} (@${testimonialData.username || 'unknown'})
 📋 *User ID:* ${userId}
 🔍 *After checking:* ${testimonialData.resultType === 'phone' ? 'Phone Number' : (testimonialData.resultType === 'link' ? 'Link' : (testimonialData.resultType === 'image' ? 'Screenshot' : 'Message'))}
-📄 *Details:* ${testimonialData.details.substring(0, 100)}
+📄 *Details:* ${testimonialData.details ? testimonialData.details.substring(0, 100) : 'N/A'}
 
 💬 *Testimonial:*
 "${testimonial}"
@@ -611,7 +624,7 @@ bot.on('text', async (ctx) => {
         return;
     }
     
-    // Skip auto-analysis for command messages and testimonial mode
+    // Skip auto-analysis for command messages
     if (message.startsWith('/')) return;
     
     // Normal auto-analysis
@@ -623,7 +636,7 @@ bot.on('text', async (ctx) => {
         await ctx.reply(response, { parse_mode: 'Markdown' });
         
         // Ask for testimonial
-        await askForTestimonial(ctx, 'auto_message', encodeURIComponent(message.substring(0, 50)));
+        await askForTestimonial(ctx, 'auto_message', message.substring(0, 50));
     }
 });
 
