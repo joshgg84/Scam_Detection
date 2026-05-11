@@ -146,17 +146,23 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 
 // ========== TESTIMONIAL COLLECTION FUNCTIONS ==========
 async function askForTestimonial(ctx, resultType, details) {
+    const userId = ctx.from.id;
+    
+    // Store the details for later
+    userTestimonialMode[userId] = {
+        resultType: resultType,
+        details: details,
+        awaiting: true
+    };
+    
     const buttons = {
         inline_keyboard: [
             [
-                { text: "✅ Yes, it helped me", callback_data: `testimonial_yes_${resultType}` },
+                { text: "✅ Yes, it helped me", callback_data: "testimonial_yes" },
                 { text: "❌ No, not helpful", callback_data: "testimonial_no" }
             ]
         ]
     };
-    
-    // Store details for later use
-    userTestimonialMode[ctx.from.id] = { resultType, details, awaitingTestimonial: true };
     
     await ctx.reply("🤝 *Was this helpful?*\n\nYour feedback helps me improve the bot and protect more Nigerians.\n\nJust one click.", {
         parse_mode: 'Markdown',
@@ -539,25 +545,25 @@ bot.on('document', async (ctx) => {
 });
 
 // ========== TESTIMONIAL CALLBACK HANDLERS ==========
-bot.action(/testimonial_yes_(.+)/, async (ctx) => {
-    const resultType = ctx.match[1];
+bot.action('testimonial_yes', async (ctx) => {
     const userId = ctx.from.id;
     const username = ctx.from.username || ctx.from.first_name;
     const fullName = ctx.from.first_name || username;
     
     // Get stored details
-    const storedData = userTestimonialMode[userId];
-    const details = storedData ? storedData.details : 'Not specified';
+    const storedData = userTestimonialMode[userId] || {};
+    const resultType = storedData.resultType || 'unknown';
+    const details = storedData.details || 'Not specified';
     
     await ctx.answerCbQuery("Great! Please send your testimonial in the next message.");
     
     // Update stored mode
-    userTestimonialMode[userId] = { 
-        resultType, 
-        details, 
-        username, 
-        fullName, 
-        awaitingTestimonial: true 
+    userTestimonialMode[userId] = {
+        resultType: resultType,
+        details: details,
+        username: username,
+        fullName: fullName,
+        awaiting: true
     };
     
     await ctx.reply("📝 *Please send your testimonial now*\n\nExample:\n_"This bot saved me from losing ₦50k to a fake loan agent. Thank you!"_\n\nJust type your message. Keep it short (2-3 sentences).", {
@@ -579,7 +585,7 @@ bot.on('text', async (ctx) => {
     const message = ctx.message.text;
     
     // Check if user is in testimonial mode
-    if (userTestimonialMode[userId] && userTestimonialMode[userId].awaitingTestimonial && !message.startsWith('/')) {
+    if (userTestimonialMode[userId] && userTestimonialMode[userId].awaiting && !message.startsWith('/')) {
         const testimonialData = userTestimonialMode[userId];
         const testimonial = message.trim();
         
