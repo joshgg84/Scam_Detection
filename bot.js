@@ -147,7 +147,7 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 // ========== TESTIMONIAL COLLECTION FUNCTIONS ==========
 async function askForTestimonial(ctx, type, details) {
     const userId = ctx.from.id;
-    awaitingTestimonial[userId] = { type, details };
+    awaitingTestimonial[userId] = { type: type, details: details };
     
     const buttons = {
         inline_keyboard: [
@@ -158,7 +158,7 @@ async function askForTestimonial(ctx, type, details) {
         ]
     };
     
-    await ctx.reply("🤝 *Was this helpful?*\n\nYour feedback helps me improve the bot and protect more Nigerians.", {
+    await ctx.reply("🤝 *Was this helpful?\n\nYour feedback helps me improve the bot and protect more Nigerians.", {
         parse_mode: 'Markdown',
         reply_markup: buttons
     });
@@ -229,18 +229,20 @@ bot.command('check', async (ctx) => {
             resultText += `\n\n📢 *Sponsored by ${sponsor.businessName}*\n${sponsor.message}`;
         }
         
-        const { fullText, buttons } = referralSystem.addReferralSectionToCheck(resultText, userId, 0);
+        const referralResult = referralSystem.addReferralSectionToCheck(resultText, userId, 0);
         
-        await ctx.reply(fullText, {
+        await ctx.reply(referralResult.fullText, {
             parse_mode: 'Markdown',
-            reply_markup: buttons
+            reply_markup: referralResult.buttons
         });
         
         // Ask for testimonial
         await askForTestimonial(ctx, 'phone', formattedNumber);
         
     } else {
-        const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(input, linkModule);
+        const analysisResult = await detection.analyzeMessageWithLinks(input, linkModule);
+        const analysis = analysisResult.analysis;
+        const linkWarnings = analysisResult.linkWarnings;
         
         let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
         response += `*📝 Message:*\n${input.substring(0, 300)}${input.length > 300 ? '...' : ''}\n\n`;
@@ -257,11 +259,11 @@ bot.command('check', async (ctx) => {
         
         response += `*✅ WHAT YOU SHOULD DO:*\n${analysis.recommendation}\n\n`;
         
-        const { fullText, buttons } = referralSystem.addReferralSectionToCheck(response, userId, analysis.riskScore);
+        const referralResult = referralSystem.addReferralSectionToCheck(response, userId, analysis.riskScore);
         
-        await ctx.reply(fullText, {
+        await ctx.reply(referralResult.fullText, {
             parse_mode: 'Markdown',
-            reply_markup: buttons
+            reply_markup: referralResult.buttons
         });
         
         // Ask for testimonial
@@ -469,7 +471,8 @@ bot.on('photo', async (ctx) => {
         return;
     }
     
-    const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(extractedText, linkModule);
+    const analysisResult = await detection.analyzeMessageWithLinks(extractedText, linkModule);
+    const analysis = analysisResult.analysis;
     
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
     response += `*Extracted:* ${extractedText.substring(0, 200)}...\n\n`;
@@ -513,7 +516,8 @@ bot.on('document', async (ctx) => {
         return;
     }
     
-    const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(extractedText, linkModule);
+    const analysisResult = await detection.analyzeMessageWithLinks(extractedText, linkModule);
+    const analysis = analysisResult.analysis;
     
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
     response += `*Extracted:* ${extractedText.substring(0, 300)}${extractedText.length > 300 ? '...' : ''}\n\n`;
@@ -614,7 +618,7 @@ bot.on('text', async (ctx) => {
         await bot.telegram.sendMessage(YOUR_ID, adminMsg, { parse_mode: 'Markdown' });
         
         // Thank the user
-        await ctx.reply("✅ *Thank you for your testimonial!*\n\nYour feedback helps others trust the bot and protects more Nigerians from scams.\n\n🙏 God bless you.");
+        await ctx.reply("✅ *Thank you for your testimonial!\n\nYour feedback helps others trust the bot and protects more Nigerians from scams.\n\n🙏 God bless you.");
         
         // Offer to share
         const shareButtons = {
