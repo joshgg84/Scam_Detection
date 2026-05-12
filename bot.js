@@ -27,6 +27,9 @@ const YOUR_ID = 8447414897;
 const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
 const GROUP_ID = -1003513272328;
 
+// Store users who want to give testimonial
+let awaitingTestimonial = {};
+
 // Initialize Partner System
 partnerSystem.initPartnerSystem();
 
@@ -141,6 +144,26 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 4. Report number to this bot: /report
 5. Join our community for support: ${COMMUNITY_LINK}`;
 
+// ========== TESTIMONIAL COLLECTION FUNCTIONS ==========
+async function askForTestimonial(ctx, type, details) {
+    const userId = ctx.from.id;
+    awaitingTestimonial[userId] = { type, details };
+    
+    const buttons = {
+        inline_keyboard: [
+            [
+                { text: "✅ Yes, it helped me", callback_data: "give_testimonial" },
+                { text: "❌ No, not helpful", callback_data: "no_testimonial" }
+            ]
+        ]
+    };
+    
+    await ctx.reply("🤝 *Was this helpful?*\n\nYour feedback helps me improve the bot and protect more Nigerians.", {
+        parse_mode: 'Markdown',
+        reply_markup: buttons
+    });
+}
+
 // ========== REGISTER ALL PUBLIC COMMANDS ==========
 
 // Basic commands
@@ -213,6 +236,9 @@ bot.command('check', async (ctx) => {
             reply_markup: buttons
         });
         
+        // Ask for testimonial
+        await askForTestimonial(ctx, 'phone', formattedNumber);
+        
     } else {
         const { analysis, linkWarnings } = await detection.analyzeMessageWithLinks(input, linkModule);
         
@@ -237,6 +263,9 @@ bot.command('check', async (ctx) => {
             parse_mode: 'Markdown',
             reply_markup: buttons
         });
+        
+        // Ask for testimonial
+        await askForTestimonial(ctx, 'message', input.substring(0, 50));
     }
 });
 
@@ -284,6 +313,9 @@ Example: /checklink https://fake-gtbank-verify.com
     response += `\n📞 *To report this link:* /reportlink ${url} [reason]\n👥 ${COMMUNITY_LINK}`;
     
     await ctx.reply(response, { parse_mode: 'Markdown' });
+    
+    // Ask for testimonial
+    await askForTestimonial(ctx, 'link', url);
 });
 
 // ========== REPORT COMMAND ==========
@@ -453,6 +485,9 @@ bot.on('photo', async (ctx) => {
             await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
+    
+    // Ask for testimonial
+    await askForTestimonial(ctx, 'image', extractedText.substring(0, 50));
 });
 
 // ========== HANDLE DOCUMENTS/FILES (for OCR) ==========
@@ -494,19 +529,119 @@ bot.on('document', async (ctx) => {
             await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
+    
+    // Ask for testimonial
+    await askForTestimonial(ctx, 'file', extractedText.substring(0, 50));
 });
 
-// ========== AUTO-ANALYZE TEXT MESSAGES ==========
+// ========== TESTIMONIAL CALLBACKS ==========
+bot.action('give_testimonial', async (ctx) => {
+    const userId = ctx.from.id;
+    const username = ctx.from.username || ctx.from.first_name;
+    
+    await ctx.answerCbQuery("Great! Send your testimonial now.");
+    
+    if (awaitingTestimonial[userId]) {
+        awaitingTestimonial[userId].username = username;
+        awaitingTestimonial[userId].ready = true;
+    } else {
+        awaitingTestimonial[userId] = { username: username, ready: true, type: 'unknown', details: 'N/A' };
+    }
+    
+    await ctx.reply("📝 *Please send your testimonial now*\n\nExample:\n_"This bot saved me from losing ₦50k to a fake loan agent. Thank you!"_\n\nJust type your message (2-3 sentences).", {
+        parse_mode: 'Markdown'
+    });
+});
+
+bot.action('no_testimonial', async (ctx) => {
+    const userId = ctx.from.id;
+    delete awaitingTestimonial[userId];
+    
+    await ctx.answerCbQuery("Sorry it wasn't helpful. I'm always improving.");
+    await ctx.reply("Thanks for your honesty. I'll keep making the bot better. 🙏");
+});
+
+bot.action('share_bot', async (ctx) => {
+    await ctx.answerCbQuery();
+    
+    const shareText = `🚨 *FREE SCAM DETECTOR* 🚨\n\nBefore you send money, check the number first.\n\n👉 @JoshuaGiwaBot\n\nFree. Fast. Anonymous.`;
+    
+    const buttons = {
+        inline_keyboard: [
+            [{ text: "📱 Share on WhatsApp", url: `https://wa.me/?text=${encodeURIComponent(shareText)}` }],
+            [{ text: "📋 Copy Bot Link", callback_data: "copy_bot_link" }]
+        ]
+    };
+    
+    await ctx.reply("📢 *Share This Life-Saving Tool*\n\nHelp your friends and family avoid scams. Share the bot with just one click.", {
+        parse_mode: 'Markdown',
+        reply_markup: buttons
+    });
+});
+
+bot.action('copy_bot_link', async (ctx) => {
+    await ctx.answerCbQuery("Bot link copied!", { show_alert: false });
+    await ctx.reply(`✅ *Bot link copied!*\n\nShare: @JoshuaGiwaBot`);
+});
+
+// ========== HANDLE TEXT MESSAGES (with testimonial support) ==========
 bot.on('text', async (ctx) => {
+    const userId = ctx.from.id;
     const message = ctx.message.text;
+    
+    // Skip commands
     if (message.startsWith('/')) return;
     
+    // Check if user is giving a testimonial
+    if (awaitingTestimonial[userId] && awaitingTestimonial[userId].ready) {
+        const testimonial = message.trim();
+        const data = awaitingTestimonial[userId];
+        
+        // Send to admin
+        const adminMsg = `
+📝 *NEW TESTIMONIAL*
+
+👤 *User:* @${data.username || 'unknown'} (ID: ${userId})
+🔍 *After checking:* ${data.type || 'unknown'}
+📄 *Details:* ${data.details || 'N/A'}
+
+💬 *Testimonial:*
+"${testimonial}"
+
+📅 ${new Date().toLocaleString()}
+        `;
+        
+        await bot.telegram.sendMessage(YOUR_ID, adminMsg, { parse_mode: 'Markdown' });
+        
+        // Thank the user
+        await ctx.reply("✅ *Thank you for your testimonial!*\n\nYour feedback helps others trust the bot and protects more Nigerians from scams.\n\n🙏 God bless you.");
+        
+        // Offer to share
+        const shareButtons = {
+            inline_keyboard: [
+                [{ text: "📢 Share This Bot", callback_data: "share_bot" }]
+            ]
+        };
+        await ctx.reply("🤝 *Help Others Stay Safe*\n\nShare this bot with your family and friends.", {
+            parse_mode: 'Markdown',
+            reply_markup: shareButtons
+        });
+        
+        // Clear
+        delete awaitingTestimonial[userId];
+        return;
+    }
+    
+    // Normal scam analysis
     const analysis = detection.analyzeMessage(message);
     if (analysis.riskScore >= 10) {
         let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
         response += `*Findings:*\n${analysis.alerts.slice(0, 4).join('\n')}\n\n`;
         response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
-        ctx.reply(response, { parse_mode: 'Markdown' });
+        await ctx.reply(response, { parse_mode: 'Markdown' });
+        
+        // Ask for testimonial
+        await askForTestimonial(ctx, 'auto_message', message.substring(0, 50));
     }
 });
 
