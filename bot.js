@@ -236,7 +236,6 @@ bot.command('check', async (ctx) => {
             reply_markup: referralResult.buttons
         });
         
-        // Ask for testimonial
         await askForTestimonial(ctx, 'phone', formattedNumber);
         
     } else {
@@ -266,7 +265,6 @@ bot.command('check', async (ctx) => {
             reply_markup: referralResult.buttons
         });
         
-        // Ask for testimonial
         await askForTestimonial(ctx, 'message', input.substring(0, 50));
     }
 });
@@ -316,7 +314,6 @@ Example: /checklink https://fake-gtbank-verify.com
     
     await ctx.reply(response, { parse_mode: 'Markdown' });
     
-    // Ask for testimonial
     await askForTestimonial(ctx, 'link', url);
 });
 
@@ -489,7 +486,6 @@ bot.on('photo', async (ctx) => {
         }
     }
     
-    // Ask for testimonial
     await askForTestimonial(ctx, 'image', extractedText.substring(0, 50));
 });
 
@@ -534,7 +530,6 @@ bot.on('document', async (ctx) => {
         }
     }
     
-    // Ask for testimonial
     await askForTestimonial(ctx, 'file', extractedText.substring(0, 50));
 });
 
@@ -552,7 +547,7 @@ bot.action('give_testimonial', async (ctx) => {
         awaitingTestimonial[userId] = { username: username, ready: true, type: 'unknown', details: 'N/A' };
     }
     
-    await ctx.reply("📝 *Please send your testimonial now*\n\nExample:\n_"This bot saved me from losing ₦50k to a fake loan agent. Thank you!"_\n\nJust type your message (2-3 sentences).", {
+    await ctx.reply("📝 *Please send your testimonial now*\n\nExample:\n_\"This bot saved me from losing ₦50k to a fake loan agent. Thank you!\"_\n\nJust type your message (2-3 sentences).", {
         parse_mode: 'Markdown'
     });
 });
@@ -593,15 +588,12 @@ bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
     const message = ctx.message.text;
     
-    // Skip commands
     if (message.startsWith('/')) return;
     
-    // Check if user is giving a testimonial
     if (awaitingTestimonial[userId] && awaitingTestimonial[userId].ready) {
         const testimonial = message.trim();
         const data = awaitingTestimonial[userId];
         
-        // Send to admin
         const adminMsg = `
 📝 *NEW TESTIMONIAL*
 
@@ -617,10 +609,8 @@ bot.on('text', async (ctx) => {
         
         await bot.telegram.sendMessage(YOUR_ID, adminMsg, { parse_mode: 'Markdown' });
         
-        // Thank the user
-        await ctx.reply("✅ *Thank you for your testimonial!\n\nYour feedback helps others trust the bot and protects more Nigerians from scams.\n\n🙏 God bless you.");
+        await ctx.reply("✅ *Thank you for your testimonial!*\n\nYour feedback helps others trust the bot and protects more Nigerians from scams.\n\n🙏 God bless you.", { parse_mode: 'Markdown' });
         
-        // Offer to share
         const shareButtons = {
             inline_keyboard: [
                 [{ text: "📢 Share This Bot", callback_data: "share_bot" }]
@@ -631,12 +621,10 @@ bot.on('text', async (ctx) => {
             reply_markup: shareButtons
         });
         
-        // Clear
         delete awaitingTestimonial[userId];
         return;
     }
     
-    // Normal scam analysis
     const analysis = detection.analyzeMessage(message);
     if (analysis.riskScore >= 10) {
         let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
@@ -644,7 +632,6 @@ bot.on('text', async (ctx) => {
         response += `*Action:* ${analysis.recommendation}\n\n👥 ${COMMUNITY_LINK}`;
         await ctx.reply(response, { parse_mode: 'Markdown' });
         
-        // Ask for testimonial
         await askForTestimonial(ctx, 'auto_message', message.substring(0, 50));
     }
 });
