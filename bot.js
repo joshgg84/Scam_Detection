@@ -158,7 +158,7 @@ async function askForTestimonial(ctx, type, details) {
         ]
     };
     
-    await ctx.reply("🤝 *Was this helpful?\n\nYour feedback helps me improve the bot and protect more Nigerians.", {
+    await ctx.reply("🤝 *Was this helpful?*\n\nYour feedback helps me improve the bot and protect more Nigerians.", {
         parse_mode: 'Markdown',
         reply_markup: buttons
     });
