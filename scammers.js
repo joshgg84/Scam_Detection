@@ -1,86 +1,101 @@
-// Nigeria Scam Detector - Scammer Database Manager
-// Created by Joshua Giwa
+// scammers.js - Scammer Database Manager
+// Unknown numbers: 1 report = scammer
+// Trusted numbers (real.json): 3 unique users = scammer
+// One user cannot report same number twice
 
 const fs = require('fs');
 
-// File path for storing scammers - using your actual filename
-const SCAMMERS_FILE = 'scammers.json';  // ← Your actual filename
+const SCAMMERS_FILE = 'scammers.json';
+const PENDING_FILE = 'pendingReports.json';
+const REAL_FILE = 'real.json';
+const USER_REPORTS_FILE = 'userReports.json';
 
-// ========== LOAD SCAMMERS FROM FILE ==========
+// ========== LOAD TRUSTED NUMBERS (REAL.JSON) ==========
+function loadTrustedNumbers() {
+    try {
+        if (fs.existsSync(REAL_FILE)) {
+            const data = JSON.parse(fs.readFileSync(REAL_FILE, 'utf8'));
+            return data.numbers || [];
+        }
+    } catch (err) {}
+    return [];
+}
+
+function isTrustedNumber(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const trusted = loadTrustedNumbers();
+    return trusted.includes(cleaned);
+}
+
+// ========== LOAD SCAMMERS ==========
 function loadScammers() {
     try {
-        if (!fs.existsSync(SCAMMERS_FILE)) {
-            console.log('📝 No scammers file found, creating new one...');
-            saveScammers([]);
-            return [];
+        if (fs.existsSync(SCAMMERS_FILE)) {
+            return JSON.parse(fs.readFileSync(SCAMMERS_FILE, 'utf8'));
         }
-        
-        const data = fs.readFileSync(SCAMMERS_FILE, 'utf8');
-        const scammers = JSON.parse(data);
-        
-        if (!Array.isArray(scammers)) {
-            console.log('⚠️ Invalid scammers file format, resetting...');
-            saveScammers([]);
-            return [];
-        }
-        
-        console.log(`📚 Loaded ${scammers.length} reported scammers from ${SCAMMERS_FILE}`);
-        return scammers;
-    } catch (err) {
-        console.error('❌ Error loading scammers:', err.message);
-        return [];
-    }
+    } catch (err) {}
+    return [];
 }
 
-// ========== SAVE SCAMMERS TO FILE ==========
 function saveScammers(scammers) {
+    fs.writeFileSync(SCAMMERS_FILE, JSON.stringify(scammers, null, 2));
+}
+
+// ========== LOAD PENDING REPORTS (FOR TRUSTED NUMBERS) ==========
+function loadPending() {
     try {
-        if (!Array.isArray(scammers)) {
-            scammers = [];
+        if (fs.existsSync(PENDING_FILE)) {
+            return JSON.parse(fs.readFileSync(PENDING_FILE, 'utf8'));
         }
-        
-        const uniqueScammers = [...new Set(scammers)];
-        if (uniqueScammers.length !== scammers.length) {
-            console.log(`⚠️ Removed ${scammers.length - uniqueScammers.length} duplicates before saving`);
-        }
-        
-        fs.writeFileSync(SCAMMERS_FILE, JSON.stringify(uniqueScammers, null, 2));
-        console.log(`💾 Saved ${uniqueScammers.length} scammers to ${SCAMMERS_FILE}`);
-        return uniqueScammers.length;
-    } catch (err) {
-        console.error('❌ Error saving scammers:', err.message);
-        return 0;
-    }
+    } catch (err) {}
+    return [];
 }
 
-// ========== ADD A NEW SCAMMER ==========
-function addScammer(phoneNumber, reason = 'Suspicious activity', reporter = 'unknown') {
-    const cleanedNumber = phoneNumber.toString().replace(/\D/g, '');
-    
-    if (!cleanedNumber || cleanedNumber.length < 8) {
-        console.log(`⚠️ Invalid phone number: ${phoneNumber}`);
-        return { success: false, message: 'Invalid phone number format' };
-    }
-    
-    let scammers = loadScammers();
-    
-    if (scammers.includes(cleanedNumber)) {
-        console.log(`⚠️ ${cleanedNumber} already in database`);
-        return { success: false, message: 'Number already reported', total: scammers.length };
-    }
-    
-    scammers.push(cleanedNumber);
-    const total = saveScammers(scammers);
-    
-    console.log(`🚨 New scammer added: ${cleanedNumber} - Reason: ${reason} - Reported by: ${reporter}`);
-    return { success: true, message: 'Scammer added successfully', total: total };
+function savePending(pending) {
+    fs.writeFileSync(PENDING_FILE, JSON.stringify(pending, null, 2));
 }
 
-// ========== CHECK IF NUMBER IS A SCAMMER ==========
+// ========== TRACK USER REPORTS (TO PREVENT DUPLICATES) ==========
+function loadUserReports() {
+    try {
+        if (fs.existsSync(USER_REPORTS_FILE)) {
+            return JSON.parse(fs.readFileSync(USER_REPORTS_FILE, 'utf8'));
+        }
+    } catch (err) {}
+    return {};
+}
+
+function saveUserReports(userReports) {
+    fs.writeFileSync(USER_REPORTS_FILE, JSON.stringify(userReports, null, 2));
+}
+
+function hasUserReported(userId, phoneNumber) {
+    const userReports = loadUserReports();
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    return userReports[userId]?.includes(cleaned) || false;
+}
+
+function addUserReport(userId, phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const userReports = loadUserReports();
+    
+    if (!userReports[userId]) {
+        userReports[userId] = [];
+    }
+    
+    if (!userReports[userId].includes(cleaned)) {
+        userReports[userId].push(cleaned);
+        saveUserReports(userReports);
+        return true;
+    }
+    return false;
+}
+
+// ========== CHECK IF NUMBER IS SCAMMER ==========
 function isScammer(phoneNumber) {
-    const cleanedNumber = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
     const scammers = loadScammers();
-    return scammers.includes(cleanedNumber);
+    return scammers.includes(cleaned);
 }
 
 // ========== GET ALL SCAMMERS ==========
@@ -93,88 +108,204 @@ function getScammerCount() {
     return loadScammers().length;
 }
 
-// ========== REMOVE A SCAMMER ==========
-function removeScammer(phoneNumber) {
-    const cleanedNumber = phoneNumber.toString().replace(/\D/g, '');
-    let scammers = loadScammers();
-    const index = scammers.indexOf(cleanedNumber);
-    
-    if (index === -1) {
-        return { success: false, message: 'Number not found in database' };
-    }
-    
-    scammers.splice(index, 1);
-    saveScammers(scammers);
-    console.log(`🗑️ Removed scammer: ${cleanedNumber}`);
-    return { success: true, message: 'Scammer removed', total: scammers.length };
-}
-
-// ========== SEARCH SCAMMERS ==========
-function searchScammers(searchTerm) {
-    const cleanedSearch = searchTerm.toString().replace(/\D/g, '');
-    const scammers = loadScammers();
-    const results = scammers.filter(num => num.includes(cleanedSearch));
-    return results;
-}
-
 // ========== GET RECENT SCAMMERS ==========
-function getRecentScammers(limit = 20) {
+function getRecentScammers(limit = 10) {
     const scammers = loadScammers();
     return scammers.slice(-limit).reverse();
 }
 
-// ========== GET FIRST SCAMMERS ==========
-function getFirstScammers(limit = 20) {
-    const scammers = loadScammers();
-    return scammers.slice(0, limit);
-}
-
-// ========== BULK ADD SCAMMERS ==========
-function bulkAddScammers(numbers, reason = 'Bulk import', reporter = 'admin') {
-    let scammers = loadScammers();
-    let added = 0;
-    let duplicates = 0;
-    let invalid = 0;
+// ========== REPORT A NUMBER ==========
+function reportNumber(phoneNumber, userId, reason) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const isTrusted = isTrustedNumber(cleaned);
     
-    for (let number of numbers) {
-        const cleanedNumber = number.toString().replace(/\D/g, '');
-        
-        if (!cleanedNumber || cleanedNumber.length < 8) {
-            invalid++;
-            continue;
-        }
-        
-        if (!scammers.includes(cleanedNumber)) {
-            scammers.push(cleanedNumber);
-            added++;
-        } else {
-            duplicates++;
-        }
+    // Check if user already reported this number
+    if (hasUserReported(userId, cleaned)) {
+        return { 
+            success: false, 
+            message: `❌ You have already reported ${cleaned}. One user, one vote.`,
+            status: 'duplicate'
+        };
     }
     
+    // Check if already a scammer
+    if (isScammer(cleaned)) {
+        return { 
+            success: false, 
+            message: `⚠️ ${cleaned} is already a VERIFIED SCAMMER.`,
+            status: 'verified'
+        };
+    }
+    
+    // For trusted numbers (in real.json): require 3 UNIQUE users
+    if (isTrusted) {
+        let pending = loadPending();
+        let existing = pending.find(p => p.phoneNumber === cleaned);
+        
+        if (existing) {
+            // Add this user's report
+            existing.reportedBy.push(userId);
+            existing.reportCount++;
+            existing.reasons.push(reason);
+            existing.lastReported = new Date().toISOString();
+            
+            // Add to user reports tracking
+            addUserReport(userId, cleaned);
+            
+            if (existing.reportCount >= 3) {
+                // Verified as scammer after 3 unique users
+                let scammers = loadScammers();
+                scammers.push(cleaned);
+                saveScammers(scammers);
+                
+                pending = pending.filter(p => p.phoneNumber !== cleaned);
+                savePending(pending);
+                
+                return {
+                    success: true,
+                    message: `🚨 ${cleaned} has been VERIFIED as a SCAMMER after 3 unique reports!`,
+                    status: 'verified',
+                    total: scammers.length
+                };
+            }
+            
+            savePending(pending);
+            
+            return {
+                success: true,
+                message: `✅ ${cleaned} reported. Need ${3 - existing.reportCount} more UNIQUE report(s) to verify.`,
+                status: 'pending',
+                reportCount: existing.reportCount
+            };
+        }
+        
+        // First report for trusted number
+        pending.push({
+            phoneNumber: cleaned,
+            reportCount: 1,
+            reportedBy: [userId],
+            reasons: [reason],
+            firstReported: new Date().toISOString(),
+            lastReported: new Date().toISOString()
+        });
+        savePending(pending);
+        
+        // Add to user reports tracking
+        addUserReport(userId, cleaned);
+        
+        return {
+            success: true,
+            message: `✅ ${cleaned} reported. This number is TRUSTED. Need 2 more UNIQUE reports to verify as scammer.`,
+            status: 'pending',
+            reportCount: 1
+        };
+    }
+    
+    // For untrusted numbers: immediate scammer
+    let scammers = loadScammers();
+    scammers.push(cleaned);
     saveScammers(scammers);
-    console.log(`📦 Bulk import: ${added} added, ${duplicates} duplicates, ${invalid} invalid`);
+    
+    // Add to user reports tracking
+    addUserReport(userId, cleaned);
     
     return {
         success: true,
-        added: added,
-        duplicates: duplicates,
-        invalid: invalid,
+        message: `🚨 ${cleaned} is now marked as a SCAMMER! Thank you for reporting.`,
+        status: 'verified',
         total: scammers.length
     };
 }
 
-// ========== EXPORT ALL FUNCTIONS ==========
+// ========== ADMIN: GET PENDING REPORTS ==========
+function getPendingReports() {
+    return loadPending();
+}
+
+// ========== ADMIN: GET USER REPORT STATS ==========
+function getUserReportStats(userId) {
+    const userReports = loadUserReports();
+    const reports = userReports[userId] || [];
+    return {
+        userId: userId,
+        totalReports: reports.length,
+        reportedNumbers: reports
+    };
+}
+
+// ========== ADMIN: MANUALLY VERIFY TRUSTED NUMBER ==========
+function manuallyVerifyScammer(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let pending = loadPending();
+    let scammers = loadScammers();
+    
+    const report = pending.find(p => p.phoneNumber === cleaned);
+    if (!report) {
+        return { success: false, message: 'Number not found in pending reports' };
+    }
+    
+    scammers.push(cleaned);
+    saveScammers(scammers);
+    
+    pending = pending.filter(p => p.phoneNumber !== cleaned);
+    savePending(pending);
+    
+    return { success: true, message: `${cleaned} manually verified as scammer`, total: scammers.length };
+}
+
+// ========== ADMIN: REMOVE FROM PENDING ==========
+function rejectPendingReport(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let pending = loadPending();
+    pending = pending.filter(p => p.phoneNumber !== cleaned);
+    savePending(pending);
+    return { success: true, message: `Report for ${cleaned} rejected` };
+}
+
+// ========== ADMIN: ADD NUMBER TO TRUSTED LIST (REAL.JSON) ==========
+function addToTrustedList(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let trusted = loadTrustedNumbers();
+    
+    if (!trusted.includes(cleaned)) {
+        trusted.push(cleaned);
+        fs.writeFileSync(REAL_FILE, JSON.stringify({
+            numbers: trusted,
+            lastUpdated: new Date().toISOString()
+        }, null, 2));
+        return { success: true, message: `${cleaned} added to trusted list` };
+    }
+    return { success: false, message: `${cleaned} already in trusted list` };
+}
+
+// ========== ADMIN: REMOVE FROM TRUSTED LIST ==========
+function removeFromTrustedList(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let trusted = loadTrustedNumbers();
+    
+    if (trusted.includes(cleaned)) {
+        const newTrusted = trusted.filter(n => n !== cleaned);
+        fs.writeFileSync(REAL_FILE, JSON.stringify({
+            numbers: newTrusted,
+            lastUpdated: new Date().toISOString()
+        }, null, 2));
+        return { success: true, message: `${cleaned} removed from trusted list` };
+    }
+    return { success: false, message: `${cleaned} not found in trusted list` };
+}
+
+// ========== EXPORTS ==========
 module.exports = {
-    loadScammers,
-    saveScammers,
-    addScammer,
+    reportNumber,
     isScammer,
     getAllScammers,
     getScammerCount,
-    removeScammer,
-    searchScammers,
     getRecentScammers,
-    getFirstScammers,
-    bulkAddScammers
+    getPendingReports,
+    getUserReportStats,
+    manuallyVerifyScammer,
+    rejectPendingReport,
+    addToTrustedList,
+    removeFromTrustedList,
+    isTrustedNumber
 };
