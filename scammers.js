@@ -463,5 +463,10 @@ module.exports = {
     rejectPendingReport,
     addToTrustedList,
     removeFromTrustedList,
-    isTrustedNumber
+    isTrustedNumber,
+    submitPlea,
+    getPendingPleas,
+    approvePlea,
+    getAllPleas,
+    rejectPlea
 };
