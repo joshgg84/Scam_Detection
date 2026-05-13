@@ -2,9 +2,19 @@
   "numbers": [
     "09025839789",
     "07063581334",
+    "08012345678",
+    "08123456789",
+    "07098765432",
+    "08009876543",
+    "0700GTBANK",
+    "08098211234",
+    "112",
+    "199",
+    "121",
+    "300",
     "07086002560"
   ],
   "description": "Numbers in this list require 3 unique reports before being marked as scammer",
   "lastUpdated": "2026-05-14T00:00:00.000Z",
-  "totalTrusted": 3
+  "totalTrusted": 13
 }
