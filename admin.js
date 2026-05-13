@@ -5,9 +5,15 @@ const fs = require('fs');
 const { getScammerCount, getAllScammers, getRecentScammers } = require('./scammers.js');
 const { dailyTips } = require('./tips.js');
 
+// Import scammers module for admin functions
+const scammersModule = require('./scammers.js');
+
 // ========== STORAGE FILES FOR DOWNLOAD ==========
 const STORAGE_FILES = [
-    { name: "scammers.json", description: "📋 List of all reported scammers" },
+    { name: "scammers.json", description: "📋 List of all verified scammers" },
+    { name: "pendingReports.json", description: "⏳ Reports waiting for verification" },
+    { name: "userReports.json", description: "👤 User report history (prevents duplicates)" },
+    { name: "real.json", description: "⭐ Trusted numbers (require 3 reports)" },
     { name: "scammers.js", description: "⚙️ Scammer database manager code" },
     { name: "tips.js", description: "💡 100+ security tips" },
     { name: "bot.js", description: "🤖 Main bot code" },
@@ -21,6 +27,7 @@ const STORAGE_FILES = [
     { name: "pendingPartners.json", description: "⏳ Pending partner registrations" },
     { name: "terms.json", description: "📖 Scam terms dictionary" },
     { name: "links.json", description: "🔗 Reported scam links database" },
+    { name: "referrals.json", description: "📊 Referral tracking database" },
     { name: "package.json", description: "📦 Dependencies list" }
 ];
 
@@ -29,14 +36,25 @@ function getAdminHelpMessage(partnerSystem, dailyTips, scamTerms, linkModule) {
     return `
 👑 *ADMIN COMMANDS*
 
-*Partner Management:*
+*Trusted Numbers (real.json)*
+/addtrusted [number] - Add number to trusted list
+/removetrusted [number] - Remove from trusted list
+/listtrusted - Show all trusted numbers
+
+*Pending Reports*
+/pending - View pending reports awaiting verification
+/verify [number] - Manually verify a pending number
+/reject [number] - Reject a pending report
+/userstats [user_id] - See user's report history
+
+*Partner Management*
 /approve [user_id] - Approve a partner
 /reject [user_id] [reason] - Reject a partner
 /verify [user_id] - Verify payment for featured partner
 /find [name] - Find user by name or username
-/pending - View all pending registrations
+/pendingpartners - View all pending partner registrations
 
-*Tip Management:*
+*Tip Management*
 /viewtips - View all tips
 /viewtips list - List first 20 tips
 /viewtips [number] - View specific tip
@@ -44,26 +62,197 @@ function getAdminHelpMessage(partnerSystem, dailyTips, scamTerms, linkModule) {
 /edittip [number] [text] - Edit a tip
 /deletetip [number] - Delete a tip
 
-*Link Management:*
+*Link Management*
 /listlinks - View all reported scam links
 /deletelink [id] - Delete a reported scam link
 /addwhitelist [domain] - Add domain to whitelist
 /removewhitelist [domain] - Remove domain from whitelist
 /linkstats - Show link database stats
 
-*Database Management:*
+*Database Management*
 /listscammers - View all reported scammers
 /scammers - Same as /listscammers
 /recent - View last 10 scammers
 /download - Download backup files
 
-*Stats:*
+*Stats*
 Approved partners: ${partnerSystem.getPartnersCount()}
 Pending registrations: ${partnerSystem.getPendingCount()}
 Total tips: ${dailyTips.length}
 Total scam terms: ${Object.keys(scamTerms).length}
 Total reported links: ${linkModule?.getReportedLinkCount() || 0}
     `;
+}
+
+// ========== TRUSTED NUMBER MANAGEMENT COMMANDS ==========
+function registerTrustedNumberCommands(bot, YOUR_ID) {
+    
+    bot.command('addtrusted', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        const phoneNumber = args[1];
+        
+        if (!phoneNumber) {
+            ctx.reply('📞 *Usage:* `/addtrusted 08012345678`\n\nAdds a number to the trusted list. Trusted numbers need 3 unique reports to become scammers.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.addToTrustedList(phoneNumber);
+        ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('removetrusted', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        const phoneNumber = args[1];
+        
+        if (!phoneNumber) {
+            ctx.reply('📞 *Usage:* `/removetrusted 08012345678`\n\nRemoves a number from the trusted list.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.removeFromTrustedList(phoneNumber);
+        ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('listtrusted', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const trusted = scammersModule.loadTrustedNumbers();
+        
+        if (trusted.length === 0) {
+            ctx.reply('📋 No trusted numbers in real.json');
+            return;
+        }
+        
+        let message = `⭐ *TRUSTED NUMBERS* (${trusted.length})\n\n`;
+        for (let i = 0; i < trusted.length; i++) {
+            message += `${i+1}. ${trusted[i]}\n`;
+        }
+        message += `\n📌 These numbers need 3 unique reports to become scammers.`;
+        
+        ctx.reply(message, { parse_mode: 'Markdown' });
+    });
+}
+
+// ========== PENDING REPORTS COMMANDS ==========
+function registerPendingReportsCommands(bot, YOUR_ID) {
+    
+    bot.command('pending', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const pending = scammersModule.getPendingReports();
+        
+        if (pending.length === 0) {
+            ctx.reply('📋 No pending reports. All numbers are verified or clean.');
+            return;
+        }
+        
+        let message = `⏳ *PENDING REPORTS* (${pending.length} numbers waiting)\n\n`;
+        
+        for (let i = 0; i < pending.length; i++) {
+            const p = pending[i];
+            message += `${i+1}. *${p.phoneNumber}*\n`;
+            message += `   Reports: ${p.reportCount}/3\n`;
+            message += `   First reported: ${new Date(p.firstReported).toLocaleDateString()}\n`;
+            message += `   Last reported: ${new Date(p.lastReported).toLocaleDateString()}\n`;
+            message += `   Reported by: ${p.reportedBy.length} unique user(s)\n`;
+            if (p.reasons && p.reasons.length > 0) {
+                message += `   Last reason: "${p.reasons[p.reasons.length - 1].substring(0, 50)}"\n`;
+            }
+            message += `\n`;
+        }
+        
+        message += `\n*Commands:*\n/verify [number] - Verify as scammer\n/reject [number] - Reject report`;
+        
+        ctx.reply(message, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('verify', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        const phoneNumber = args[1];
+        
+        if (!phoneNumber) {
+            ctx.reply('📞 *Usage:* `/verify 08012345678`\n\nManually verifies a pending number as a scammer.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.manuallyVerifyScammer(phoneNumber);
+        ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('reject', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        const phoneNumber = args[1];
+        
+        if (!phoneNumber) {
+            ctx.reply('📞 *Usage:* `/reject 08012345678`\n\nRejects a pending report.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.rejectPendingReport(phoneNumber);
+        ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
+    });
+    
+    bot.command('userstats', (ctx) => {
+        if (ctx.from.id !== YOUR_ID) {
+            ctx.reply('❌ Admin only.');
+            return;
+        }
+        
+        const args = ctx.message.text.split(' ');
+        let userId = args[1];
+        
+        if (!userId) {
+            ctx.reply('📞 *Usage:* `/userstats [user_id]`\n\nShows how many reports a user has made.\n\nGet user ID by asking them to type /myid', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        userId = parseInt(userId);
+        const stats = scammersModule.getUserReportStats(userId);
+        
+        let message = `👤 *USER REPORT STATS*\n\n`;
+        message += `User ID: ${stats.userId}\n`;
+        message += `Total reports made: ${stats.totalReports}\n\n`;
+        
+        if (stats.reportedNumbers.length > 0) {
+            message += `*Numbers reported:*\n`;
+            for (let i = 0; i < Math.min(10, stats.reportedNumbers.length); i++) {
+                message += `${i+1}. ${stats.reportedNumbers[i]}\n`;
+            }
+            if (stats.reportedNumbers.length > 10) {
+                message += `\n...and ${stats.reportedNumbers.length - 10} more.`;
+            }
+        } else {
+            message += `No reports yet.`;
+        }
+        
+        ctx.reply(message, { parse_mode: 'Markdown' });
+    });
 }
 
 // ========== TIP MANAGEMENT COMMANDS ==========
@@ -497,6 +686,12 @@ function registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms
         }
         ctx.reply(getAdminHelpMessage(partnerSystem, dailyTips, scamTerms, linkModule), { parse_mode: 'Markdown' });
     });
+    
+    // Trusted number management
+    registerTrustedNumberCommands(bot, YOUR_ID);
+    
+    // Pending reports management
+    registerPendingReportsCommands(bot, YOUR_ID);
     
     // Tip management
     registerTipCommands(bot, YOUR_ID, dailyTips);
