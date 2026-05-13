@@ -28,6 +28,38 @@ function isTrustedNumber(phoneNumber) {
     return trusted.includes(cleaned);
 }
 
+function addToTrustedList(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let trusted = loadTrustedNumbers();
+    
+    if (!trusted.includes(cleaned)) {
+        trusted.push(cleaned);
+        fs.writeFileSync(REAL_FILE, JSON.stringify({
+            numbers: trusted,
+            lastUpdated: new Date().toISOString(),
+            totalTrusted: trusted.length
+        }, null, 2));
+        return { success: true, message: `${cleaned} added to trusted list` };
+    }
+    return { success: false, message: `${cleaned} already in trusted list` };
+}
+
+function removeFromTrustedList(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let trusted = loadTrustedNumbers();
+    
+    if (trusted.includes(cleaned)) {
+        const newTrusted = trusted.filter(n => n !== cleaned);
+        fs.writeFileSync(REAL_FILE, JSON.stringify({
+            numbers: newTrusted,
+            lastUpdated: new Date().toISOString(),
+            totalTrusted: newTrusted.length
+        }, null, 2));
+        return { success: true, message: `${cleaned} removed from trusted list` };
+    }
+    return { success: false, message: `${cleaned} not found in trusted list` };
+}
+
 // ========== LOAD SCAMMERS ==========
 function loadScammers() {
     try {
@@ -92,6 +124,16 @@ function addUserReport(userId, phoneNumber) {
     return false;
 }
 
+function getUserReportStats(userId) {
+    const userReports = loadUserReports();
+    const reports = userReports[userId] || [];
+    return {
+        userId: userId,
+        totalReports: reports.length,
+        reportedNumbers: reports
+    };
+}
+
 // ========== CHECK IF NUMBER IS SCAMMER ==========
 function isScammer(phoneNumber) {
     const cleaned = phoneNumber.toString().replace(/\D/g, '');
@@ -113,6 +155,40 @@ function getScammerCount() {
 function getRecentScammers(limit = 10) {
     const scammers = loadScammers();
     return scammers.slice(-limit).reverse();
+}
+
+// ========== GET PENDING REPORTS (for admin) ==========
+function getPendingReports() {
+    return loadPending();
+}
+
+// ========== MANUALLY VERIFY PENDING NUMBER ==========
+function manuallyVerifyScammer(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let pending = loadPending();
+    let scammers = loadScammers();
+    
+    const report = pending.find(p => p.phoneNumber === cleaned);
+    if (!report) {
+        return { success: false, message: 'Number not found in pending reports' };
+    }
+    
+    scammers.push(cleaned);
+    saveScammers(scammers);
+    
+    pending = pending.filter(p => p.phoneNumber !== cleaned);
+    savePending(pending);
+    
+    return { success: true, message: `${cleaned} manually verified as scammer`, total: scammers.length };
+}
+
+// ========== REJECT PENDING REPORT ==========
+function rejectPendingReport(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    let pending = loadPending();
+    pending = pending.filter(p => p.phoneNumber !== cleaned);
+    savePending(pending);
+    return { success: true, message: `Report for ${cleaned} rejected` };
 }
 
 // ========== REPORT A NUMBER ==========
@@ -218,84 +294,7 @@ function reportNumber(phoneNumber, userId, reason) {
     };
 }
 
-// ========== ADMIN: GET PENDING REPORTS ==========
-function getPendingReports() {
-    return loadPending();
-}
-
-// ========== ADMIN: GET USER REPORT STATS ==========
-function getUserReportStats(userId) {
-    const userReports = loadUserReports();
-    const reports = userReports[userId] || [];
-    return {
-        userId: userId,
-        totalReports: reports.length,
-        reportedNumbers: reports
-    };
-}
-
-// ========== ADMIN: MANUALLY VERIFY TRUSTED NUMBER ==========
-function manuallyVerifyScammer(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    let pending = loadPending();
-    let scammers = loadScammers();
-    
-    const report = pending.find(p => p.phoneNumber === cleaned);
-    if (!report) {
-        return { success: false, message: 'Number not found in pending reports' };
-    }
-    
-    scammers.push(cleaned);
-    saveScammers(scammers);
-    
-    pending = pending.filter(p => p.phoneNumber !== cleaned);
-    savePending(pending);
-    
-    return { success: true, message: `${cleaned} manually verified as scammer`, total: scammers.length };
-}
-
-// ========== ADMIN: REMOVE FROM PENDING ==========
-function rejectPendingReport(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    let pending = loadPending();
-    pending = pending.filter(p => p.phoneNumber !== cleaned);
-    savePending(pending);
-    return { success: true, message: `Report for ${cleaned} rejected` };
-}
-
-// ========== ADMIN: ADD NUMBER TO TRUSTED LIST (REAL.JSON) ==========
-function addToTrustedList(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    let trusted = loadTrustedNumbers();
-    
-    if (!trusted.includes(cleaned)) {
-        trusted.push(cleaned);
-        fs.writeFileSync(REAL_FILE, JSON.stringify({
-            numbers: trusted,
-            lastUpdated: new Date().toISOString()
-        }, null, 2));
-        return { success: true, message: `${cleaned} added to trusted list` };
-    }
-    return { success: false, message: `${cleaned} already in trusted list` };
-}
-
-// ========== ADMIN: REMOVE FROM TRUSTED LIST ==========
-function removeFromTrustedList(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    let trusted = loadTrustedNumbers();
-    
-    if (trusted.includes(cleaned)) {
-        const newTrusted = trusted.filter(n => n !== cleaned);
-        fs.writeFileSync(REAL_FILE, JSON.stringify({
-            numbers: newTrusted,
-            lastUpdated: new Date().toISOString()
-        }, null, 2));
-        return { success: true, message: `${cleaned} removed from trusted list` };
-    }
-    return { success: false, message: `${cleaned} not found in trusted list` };
-}
-
-// ========== PLEA SYSTEM =========
+// ========== PLEA SYSTEM ==========
 function loadPleas() {
     try {
         if (fs.existsSync(PLEAS_FILE)) {
@@ -452,21 +451,35 @@ function rejectPlea(pleaId, adminNotes = '') {
 
 // ========== EXPORTS ==========
 module.exports = {
+    // Core functions
     reportNumber,
     isScammer,
     getAllScammers,
     getScammerCount,
     getRecentScammers,
-    getPendingReports,
-    getUserReportStats,
-    manuallyVerifyScammer,
-    rejectPendingReport,
+    
+    // Trusted numbers
+    isTrustedNumber,
     addToTrustedList,
     removeFromTrustedList,
-    isTrustedNumber,
+    loadTrustedNumbers,
+    
+    // Pending reports
+    getPendingReports,
+    manuallyVerifyScammer,
+    rejectPendingReport,
+    loadPending,
+    
+    // User reports
+    getUserReportStats,
+    loadUserReports,
+    hasUserReported,
+    addUserReport,
+    
+    // Plea system
     submitPlea,
     getPendingPleas,
-    approvePlea,
     getAllPleas,
+    approvePlea,
     rejectPlea
 };
