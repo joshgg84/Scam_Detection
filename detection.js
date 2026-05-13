@@ -1,8 +1,50 @@
 // detection.js - Scam Detection and Analysis Module
 // Contains analyzeMessage function with detailed explanations
 
+const fs = require('fs');
 const linkModule = require('./links.js');
 const { getAllScammers } = require('./scammers.js');
+
+// ========== LOAD TERMS DATABASE ==========
+let scamTerms = {};
+const TERMS_FILE = 'terms.json';
+
+function loadTerms() {
+    try {
+        if (fs.existsSync(TERMS_FILE)) {
+            const data = fs.readFileSync(TERMS_FILE, 'utf8');
+            scamTerms = JSON.parse(data);
+            console.log(`📚 Loaded ${Object.keys(scamTerms).length} scam terms from terms.json`);
+        } else {
+            console.error('❌ terms.json not found!');
+            scamTerms = {};
+        }
+    } catch (err) {
+        console.error('Error loading terms.json:', err);
+        scamTerms = {};
+    }
+}
+
+function getTerm(term) {
+    const lowerTerm = term.toLowerCase();
+    if (scamTerms[lowerTerm]) return scamTerms[lowerTerm];
+    for (const [key, value] of Object.entries(scamTerms)) {
+        if (key.includes(lowerTerm) || lowerTerm.includes(key)) return value;
+    }
+    return null;
+}
+
+function getAllTermKeys() {
+    return Object.keys(scamTerms);
+}
+
+function getCommonScams() {
+    const commonKeys = ['phishing', '419', 'romance scam', 'fake alert', 'investment scam', 'job scam', 'loan scam', 'sim swap', 'otp scam', 'pig butchering'];
+    return commonKeys.filter(key => scamTerms[key]);
+}
+
+// Load terms immediately
+loadTerms();
 
 // ========== HELPER FUNCTIONS ==========
 function checkNumberInDatabase(phoneNumber) {
@@ -91,13 +133,7 @@ function analyzeMessage(text) {
     const urgencyWords = ['immediately', 'within 24 hours', 'asap', 'right now', 'today only', 'now'];
     urgencyWords.forEach(word => {
         if (lowerText.includes(word)) {
-            const urgencyExplanations = {
-                'immediately': 'Legitimate organizations give you time to think, not panic.',
-                'within 24 hours': 'Scammers create fake deadlines to pressure you.',
-                'asap': 'Urgency is a classic scam tactic to bypass your judgment.',
-                'right now': 'No real emergency requires immediate action via text.'
-            };
-            alerts.push(`⏰ "False urgency" → ${urgencyExplanations[word] || 'Scammers rush you so you don\'t think clearly.'}`);
+            alerts.push(`⏰ "False urgency" → Scammers rush you so you don\'t think clearly.`);
             riskScore += 10;
         }
     });
@@ -189,8 +225,36 @@ async function analyzeMessageWithLinks(text, linkModule) {
     return { analysis, linkWarnings };
 }
 
+// ========== EDUCATION CONTENT ==========
+const redFlagsContent = `🚩 *SCAM RED FLAGS*
+
+URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
+MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
+INFO: "PIN", "OTP", "BVN", "CVV"
+FAKE: "WINNING", "LOTTERY", "PRINCE"
+ACCOUNT: "RENT", "LEASE", "LINKEDIN"
+JOBS: "WORK FROM HOME", "EASY MONEY"
+
+👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`;
+
+const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
+
+1. Contact your bank immediately
+2. Save all evidence
+3. Report to EFCC: 08093322644
+4. Report number to this bot: /report
+5. Join our community for support: https://t.me/+8JUqlJ-4SBdlZTM0`;
+
+// ========== EXPORTS ==========
 module.exports = {
     analyzeMessage,
     analyzeMessageWithLinks,
-    checkNumberInDatabase
+    checkNumberInDatabase,
+    getTerm,
+    getAllTermKeys,
+    getCommonScams,
+    loadTerms,
+    redFlagsContent,
+    whatToDoContent,
+    scamTerms
 };
