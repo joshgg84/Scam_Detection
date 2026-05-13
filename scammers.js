@@ -9,6 +9,7 @@ const SCAMMERS_FILE = 'scammers.json';
 const PENDING_FILE = 'pendingReports.json';
 const REAL_FILE = 'real.json';
 const USER_REPORTS_FILE = 'userReports.json';
+const PLEAS_FILE = 'pleas.json';
 
 // ========== LOAD TRUSTED NUMBERS (REAL.JSON) ==========
 function loadTrustedNumbers() {
@@ -292,6 +293,161 @@ function removeFromTrustedList(phoneNumber) {
         return { success: true, message: `${cleaned} removed from trusted list` };
     }
     return { success: false, message: `${cleaned} not found in trusted list` };
+}
+
+// ========== PLEA SYSTEM =========
+function loadPleas() {
+    try {
+        if (fs.existsSync(PLEAS_FILE)) {
+            return JSON.parse(fs.readFileSync(PLEAS_FILE, 'utf8'));
+        }
+    } catch (err) {}
+    return { pleas: [], settings: { pendingExpiryDays: 30 } };
+}
+
+function savePleas(data) {
+    fs.writeFileSync(PLEAS_FILE, JSON.stringify(data, null, 2));
+}
+
+function submitPlea(phoneNumber, userId, username, reason) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const scammers = loadScammers();
+    
+    // Check if number is actually a scammer
+    if (!scammers.includes(cleaned)) {
+        return { 
+            success: false, 
+            message: `❌ ${cleaned} is not in the scammers database. No plea needed.`,
+            status: 'not_scammer'
+        };
+    }
+    
+    // Check if plea already exists
+    const pleas = loadPleas();
+    const existingPlea = pleas.pleas.find(p => p.phoneNumber === cleaned && p.status === 'pending');
+    
+    if (existingPlea) {
+        return { 
+            success: false, 
+            message: `⏳ A plea for ${cleaned} is already pending admin review. Please wait.`,
+            status: 'already_pending'
+        };
+    }
+    
+    // Check for previously rejected plea (optional cooldown)
+    const rejectedPlea = pleas.pleas.find(p => p.phoneNumber === cleaned && p.status === 'rejected');
+    if (rejectedPlea) {
+        const daysSinceRejection = (new Date() - new Date(rejectedPlea.reviewedAt)) / (1000 * 60 * 60 * 24);
+        if (daysSinceRejection < 30) {
+            return {
+                success: false,
+                message: `❌ A plea for ${cleaned} was rejected on ${new Date(rejectedPlea.reviewedAt).toLocaleDateString()}. You can submit again after 30 days.`,
+                status: 'cooldown'
+            };
+        }
+    }
+    
+    // Submit new plea
+    const newPlea = {
+        id: Date.now(),
+        phoneNumber: cleaned,
+        userId: userId,
+        username: username,
+        reason: reason,
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+        reviewedAt: null,
+        adminNotes: null
+    };
+    
+    pleas.pleas.push(newPlea);
+    savePleas(pleas);
+    
+    return {
+        success: true,
+        message: `✅ Plea submitted for ${cleaned}. Admin will review your request. You will be notified when a decision is made.`,
+        status: 'submitted',
+        pleaId: newPlea.id
+    };
+}
+
+function getPendingPleas() {
+    const pleas = loadPleas();
+    return pleas.pleas.filter(p => p.status === 'pending');
+}
+
+function getAllPleas() {
+    const pleas = loadPleas();
+    return pleas.pleas;
+}
+
+function approvePlea(pleaId, adminNotes = '') {
+    const pleas = loadPleas();
+    const pleaIndex = pleas.pleas.findIndex(p => p.id === pleaId);
+    
+    if (pleaIndex === -1) {
+        return { success: false, message: 'Plea not found' };
+    }
+    
+    const plea = pleas.pleas[pleaIndex];
+    
+    if (plea.status !== 'pending') {
+        return { success: false, message: `Plea is already ${plea.status}` };
+    }
+    
+    // Remove number from scammers.json
+    let scammers = loadScammers();
+    const cleaned = plea.phoneNumber;
+    
+    if (!scammers.includes(cleaned)) {
+        return { success: false, message: 'Number not found in scammers database' };
+    }
+    
+    scammers = scammers.filter(n => n !== cleaned);
+    saveScammers(scammers);
+    
+    // Update plea status
+    plea.status = 'approved';
+    plea.reviewedAt = new Date().toISOString();
+    plea.adminNotes = adminNotes;
+    savePleas(pleas);
+    
+    return {
+        success: true,
+        message: `✅ Plea approved. ${cleaned} removed from scammers database.`,
+        phoneNumber: cleaned,
+        userId: plea.userId,
+        username: plea.username
+    };
+}
+
+function rejectPlea(pleaId, adminNotes = '') {
+    const pleas = loadPleas();
+    const pleaIndex = pleas.pleas.findIndex(p => p.id === pleaId);
+    
+    if (pleaIndex === -1) {
+        return { success: false, message: 'Plea not found' };
+    }
+    
+    const plea = pleas.pleas[pleaIndex];
+    
+    if (plea.status !== 'pending') {
+        return { success: false, message: `Plea is already ${plea.status}` };
+    }
+    
+    plea.status = 'rejected';
+    plea.reviewedAt = new Date().toISOString();
+    plea.adminNotes = adminNotes;
+    savePleas(pleas);
+    
+    return {
+        success: true,
+        message: `❌ Plea rejected. ${plea.phoneNumber} remains in scammers database.`,
+        phoneNumber: plea.phoneNumber,
+        userId: plea.userId,
+        username: plea.username,
+        adminNotes: adminNotes
+    };
 }
 
 // ========== EXPORTS ==========
