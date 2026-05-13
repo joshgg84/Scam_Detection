@@ -255,6 +255,157 @@ function registerPendingReportsCommands(bot, YOUR_ID) {
     });
 }
 
+// ========== PLEA MANAGEMENT COMMANDS ==========
+
+// View all pending pleas
+bot.command('pleas', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    
+    const pendingPleas = scammersModule.getPendingPleas();
+    
+    if (pendingPleas.length === 0) {
+        ctx.reply('📋 No pending pleas. All clear.');
+        return;
+    }
+    
+    let message = `📋 *PENDING PLEAS* (${pendingPleas.length})\n\n`;
+    
+    for (let i = 0; i < pendingPleas.length; i++) {
+        const p = pendingPleas[i];
+        message += `${i+1}. *ID:* ${p.id}\n`;
+        message += `   📞 *Number:* ${p.phoneNumber}\n`;
+        message += `   👤 *User:* @${p.username} (${p.userId})\n`;
+        message += `   💬 *Reason:* ${p.reason.substring(0, 100)}${p.reason.length > 100 ? '...' : ''}\n`;
+        message += `   📅 *Submitted:* ${new Date(p.submittedAt).toLocaleString()}\n`;
+        message += `   🔹 */approveplea ${p.id}*\n`;
+        message += `   🔸 */rejectplea ${p.id} [reason]*\n\n`;
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
+// Approve a plea (remove number from scammers)
+bot.command('approveplea', async (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+        ctx.reply('📞 *Usage:* `/approveplea [plea_id]`\n\nUse /pleas to see pending plea IDs.', { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    const pleaId = parseInt(args[1]);
+    const adminNotes = args.slice(2).join(' ') || 'Approved by admin';
+    
+    const result = scammersModule.approvePlea(pleaId, adminNotes);
+    
+    if (result.success) {
+        await ctx.reply(`✅ ${result.message}`);
+        
+        // Notify the user
+        try {
+            await bot.telegram.sendMessage(result.userId, `
+✅ *PLEA APPROVED*
+
+Your plea for number *${result.phoneNumber}* has been APPROVED.
+
+This number has been removed from the scammers database.
+
+If this was a mistake, please contact @JoshuaGiwa.
+
+Thank you for your patience.
+            `, { parse_mode: 'Markdown' });
+        } catch (err) {
+            console.log(`Could not notify user ${result.userId}`);
+        }
+    } else {
+        await ctx.reply(`❌ ${result.message}`);
+    }
+});
+
+// Reject a plea
+bot.command('rejectplea', async (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    
+    const args = ctx.message.text.split(' ');
+    if (args.length < 2) {
+        ctx.reply('📞 *Usage:* `/rejectplea [plea_id] [reason]`\n\nExample: `/rejectplea 12345 Insufficient evidence`', { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    const pleaId = parseInt(args[1]);
+    const adminNotes = args.slice(2).join(' ') || 'Rejected by admin';
+    
+    const result = scammersModule.rejectPlea(pleaId, adminNotes);
+    
+    if (result.success) {
+        await ctx.reply(`❌ ${result.message}`);
+        
+        // Notify the user
+        try {
+            await bot.telegram.sendMessage(result.userId, `
+❌ *PLEA REJECTED*
+
+Your plea for number *${result.phoneNumber}* has been REJECTED.
+
+Reason: ${result.adminNotes}
+
+This number will remain in the scammers database.
+
+If you believe this is an error, please contact @JoshuaGiwa.
+            `, { parse_mode: 'Markdown' });
+        } catch (err) {
+            console.log(`Could not notify user ${result.userId}`);
+        }
+    } else {
+        await ctx.reply(`❌ ${result.message}`);
+    }
+});
+
+// View all pleas (approved/rejected/pending)
+bot.command('allpleas', (ctx) => {
+    if (ctx.from.id !== YOUR_ID) {
+        ctx.reply('❌ Admin only.');
+        return;
+    }
+    
+    const allPleas = scammersModule.getAllPleas();
+    
+    if (allPleas.length === 0) {
+        ctx.reply('📋 No pleas found.');
+        return;
+    }
+    
+    let message = `📋 *ALL PLEAS* (${allPleas.length})\n\n`;
+    
+    for (let i = 0; i < Math.min(20, allPleas.length); i++) {
+        const p = allPleas[i];
+        const statusEmoji = p.status === 'approved' ? '✅' : (p.status === 'rejected' ? '❌' : '⏳');
+        message += `${i+1}. ${statusEmoji} *${p.phoneNumber}* - ${p.status.toUpperCase()}\n`;
+        message += `   🆔 ID: ${p.id} | 👤 @${p.username}\n`;
+        message += `   📅 ${new Date(p.submittedAt).toLocaleDateString()}\n`;
+        if (p.reviewedAt) {
+            message += `   📌 Reviewed: ${new Date(p.reviewedAt).toLocaleDateString()}\n`;
+        }
+        message += `\n`;
+    }
+    
+    if (allPleas.length > 20) {
+        message += `\n...and ${allPleas.length - 20} more.`;
+    }
+    
+    ctx.reply(message, { parse_mode: 'Markdown' });
+});
+
 // ========== TIP MANAGEMENT COMMANDS ==========
 function registerTipCommands(bot, YOUR_ID, dailyTips) {
     
