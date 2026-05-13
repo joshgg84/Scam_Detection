@@ -33,62 +33,15 @@ let awaitingTestimonial = {};
 // Initialize Partner System
 partnerSystem.initPartnerSystem();
 
-// ========== LOAD TERMS DATABASE ==========
-let scamTerms = {};
-const TERMS_FILE = 'terms.json';
-
-function loadTerms() {
-    try {
-        if (fs.existsSync(TERMS_FILE)) {
-            const data = fs.readFileSync(TERMS_FILE, 'utf8');
-            scamTerms = JSON.parse(data);
-            console.log(`📚 Loaded ${Object.keys(scamTerms).length} scam terms`);
-        } else {
-            console.error('❌ terms.json not found!');
-            scamTerms = {};
-        }
-    } catch (err) {
-        console.error('Error loading terms.json:', err);
-        scamTerms = {};
-    }
-}
-
-function getTerm(term) {
-    const lowerTerm = term.toLowerCase();
-    if (scamTerms[lowerTerm]) return scamTerms[lowerTerm];
-    for (const [key, value] of Object.entries(scamTerms)) {
-        if (key.includes(lowerTerm) || lowerTerm.includes(key)) return value;
-    }
-    return null;
-}
-
-function getAllTermKeys() {
-    return Object.keys(scamTerms);
-}
-
-function getCommonScams() {
-    const commonKeys = ['phishing', '419', 'romance scam', 'fake alert', 'investment scam', 'job scam', 'loan scam', 'sim swap', 'otp scam', 'pig butchering'];
-    return commonKeys.filter(key => scamTerms[key]);
-}
-
-loadTerms();
-
 // ========== HELPER FUNCTIONS ==========
-function checkNumberInDatabase(phoneNumber) {
-    const scammers = getAllScammers();
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    if (cleaned.length === 0) return false;
-    return scammers.some(scammer => {
-        const scammerCleaned = scammer.toString().replace(/\D/g, '');
-        return scammerCleaned === cleaned;
-    });
-}
-
 function getHelpMessage() {
     return `
 📚 *NIGERIA SCAM DETECTOR - HELP*
 
 *Creator:* Joshua Giwa
+
+⏰ *Note:* First message may take 30-50 seconds to wake me up.
+After that, I respond instantly. Thanks for your patience! 🇳🇬
 
 📝 *How to check a suspicious message:*
 /check [paste the suspicious message here]
@@ -104,6 +57,7 @@ function getHelpMessage() {
 /referral - Get your unique referral link
 /leaderboard - View top inviters
 /myreferrals - Check your referral stats
+/plea [number] [reason] - Request removal from scammer list
 
 *Education:*
 /scamtypes - Learn common scams
@@ -123,26 +77,6 @@ function getHelpMessage() {
 🇳🇬 Stay safe. Always VERIFY before you trust.
     `;
 }
-
-// ========== EDUCATION CONTENT ==========
-const redFlagsContent = `🚩 *SCAM RED FLAGS*
-
-URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
-MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
-INFO: "PIN", "OTP", "BVN", "CVV"
-FAKE: "WINNING", "LOTTERY", "PRINCE"
-ACCOUNT: "RENT", "LEASE", "LINKEDIN"
-JOBS: "WORK FROM HOME", "EASY MONEY"
-
-👥 Join our community: ${COMMUNITY_LINK}`;
-
-const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
-
-1. Contact your bank immediately
-2. Save all evidence
-3. Report to EFCC: 08093322644
-4. Report number to this bot: /report
-5. Join our community for support: ${COMMUNITY_LINK}`;
 
 // ========== TESTIMONIAL COLLECTION FUNCTIONS ==========
 async function askForTestimonial(ctx, type, details) {
@@ -218,7 +152,7 @@ bot.command('check', async (ctx) => {
     
     if (phoneMatch) {
         const formattedNumber = phoneMatch[0];
-        const reported = checkNumberInDatabase(formattedNumber);
+        const reported = detection.checkNumberInDatabase(formattedNumber);
         
         let resultText = reported 
             ? `🚨 *ALERT!*\n${formattedNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money\n❌ Block immediately`
@@ -236,6 +170,7 @@ bot.command('check', async (ctx) => {
             reply_markup: referralResult.buttons
         });
         
+        // Ask for testimonial
         await askForTestimonial(ctx, 'phone', formattedNumber);
         
     } else {
@@ -265,6 +200,7 @@ bot.command('check', async (ctx) => {
             reply_markup: referralResult.buttons
         });
         
+        // Ask for testimonial
         await askForTestimonial(ctx, 'message', input.substring(0, 50));
     }
 });
@@ -314,25 +250,38 @@ Example: /checklink https://fake-gtbank-verify.com
     
     await ctx.reply(response, { parse_mode: 'Markdown' });
     
+    // Ask for testimonial
     await askForTestimonial(ctx, 'link', url);
 });
 
 // ========== REPORT COMMAND ==========
-bot.command('report', (ctx) => {
+bot.command('report', async (ctx) => {
     const parts = ctx.message.text.split(' ');
     let phoneNumber = parts[1];
     const reason = parts.slice(2).join(' ') || 'Suspicious activity';
+    
     if (!phoneNumber) {
         ctx.reply('📞 *Usage:* `/report 08012345678 [reason]`', { parse_mode: 'Markdown' });
         return;
     }
+    
+    const userId = ctx.from.id;
+    const username = ctx.from.username || ctx.from.first_name;
     const formattedNumber = phoneNumber.toString().trim();
-    if (checkNumberInDatabase(formattedNumber)) {
-        ctx.reply(`⚠️ ${formattedNumber} is already reported.`);
-        return;
+    
+    // Use the new reportNumber function from scammers.js
+    const result = await reportNumber(formattedNumber, userId, reason);
+    
+    if (result.success) {
+        ctx.reply(`✅ *REPORTED*\n${formattedNumber}\n${result.message}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
+        
+        // If number became verified, notify admin
+        if (result.status === 'verified') {
+            await bot.telegram.sendMessage(YOUR_ID, `🚨 *NUMBER VERIFIED AS SCAMMER*\n\n📞 ${formattedNumber}\n📊 Total scammers: ${result.total}\n📝 Reason: ${reason}\n👤 Reported by: @${username}`);
+        }
+    } else {
+        ctx.reply(`❌ ${result.message}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     }
-    const result = addScammer(formattedNumber, reason, ctx.from.username || ctx.from.id);
-    ctx.reply(`✅ *REPORTED*\n${formattedNumber}\nTotal: ${result.total}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
 });
 
 // ========== REPORT LINK COMMAND ==========
@@ -366,6 +315,55 @@ Example: /reportlink https://fake-site.com "Fake bank login page"
     }
 });
 
+// ========== PLEA COMMAND ==========
+bot.command('plea', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    
+    if (args.length < 2) {
+        ctx.reply(`
+📝 *PLEA COMMAND*
+
+Use this command if your number was wrongly marked as a scammer.
+
+*Usage:* /plea 08012345678 I am a legitimate business
+
+Your plea will be reviewed by admin. You will be notified when a decision is made.
+        `, { parse_mode: 'Markdown' });
+        return;
+    }
+    
+    const phoneNumber = args[1];
+    const reason = args.slice(2).join(' ') || 'No reason provided';
+    const userId = ctx.from.id;
+    const username = ctx.from.username || ctx.from.first_name;
+    
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    if (cleaned.length < 8 || cleaned.length > 14) {
+        ctx.reply('❌ Invalid phone number format.');
+        return;
+    }
+    
+    // Need to import submitPlea from scammers.js
+    const { submitPlea } = require('./scammers.js');
+    const result = submitPlea(cleaned, userId, username, reason);
+    
+    await ctx.reply(result.message, { parse_mode: 'Markdown' });
+    
+    if (result.success && result.status === 'submitted') {
+        await bot.telegram.sendMessage(YOUR_ID, `
+📋 *NEW PLEA SUBMITTED*
+
+🆔 ID: ${result.pleaId}
+📞 Number: ${cleaned}
+👤 User: @${username} (${userId})
+💬 Reason: ${reason}
+
+/approveplea ${result.pleaId}
+/rejectplea ${result.pleaId} [reason]
+        `, { parse_mode: 'Markdown' });
+    }
+});
+
 // ========== REFERRAL COMMANDS ==========
 bot.command('referral', async (ctx) => {
     await referralSystem.handleReferralCommand(ctx);
@@ -389,7 +387,7 @@ bot.command('partners', async (ctx) => {
     }
 });
 
-// ========== SIMPLIFIED PARTNER COMMAND ==========
+// ========== PARTNER COMMAND ==========
 bot.command('partner', (ctx) => {
     ctx.reply(`
 🤝 *PARTNER PROGRAM*
@@ -413,7 +411,7 @@ WhatsApp: 09025839789
     `, { parse_mode: 'Markdown' });
 });
 
-// Education commands
+// ========== EDUCATION COMMANDS ==========
 bot.command('tips', (ctx) => {
     if (dailyTips.length === 0) return ctx.reply('⚠️ No tips yet.');
     const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
@@ -421,36 +419,36 @@ bot.command('tips', (ctx) => {
 });
 
 bot.command('scamtypes', (ctx) => {
-    const commonScams = getCommonScams();
+    const commonScams = detection.getCommonScams();
     if (commonScams.length === 0) return ctx.reply('No scam terms loaded.');
     let message = `📚 *COMMON SCAMS*\n\n`;
     for (const key of commonScams.slice(0, 8)) {
-        const term = scamTerms[key];
+        const term = detection.scamTerms[key];
         if (term) message += `${term.title}\n   ${(term.content || term).split('.')[0]}.\n\n`;
     }
     ctx.reply(message + `👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
 });
 
-bot.command('redflags', (ctx) => ctx.reply(redFlagsContent, { parse_mode: 'Markdown' }));
-bot.command('whattodo', (ctx) => ctx.reply(whatToDoContent, { parse_mode: 'Markdown' }));
+bot.command('redflags', (ctx) => ctx.reply(detection.redFlagsContent, { parse_mode: 'Markdown' }));
+bot.command('whattodo', (ctx) => ctx.reply(detection.whatToDoContent, { parse_mode: 'Markdown' }));
 
 bot.command('whatis', (ctx) => {
     const term = ctx.message.text.split(' ').slice(1).join(' ').toLowerCase();
     if (!term) {
-        ctx.reply(`📖 *Usage:* /whatis phishing\n\nAvailable: ${getAllTermKeys().slice(0, 15).join(', ')}`, { parse_mode: 'Markdown' });
+        ctx.reply(`📖 *Usage:* /whatis phishing\n\nAvailable: ${detection.getAllTermKeys().slice(0, 15).join(', ')}`, { parse_mode: 'Markdown' });
         return;
     }
-    const data = getTerm(term);
+    const data = detection.getTerm(term);
     if (data) ctx.reply(`${data.title}\n\n${data.content}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-    else ctx.reply(`❌ "${term}" not found. Try: ${getAllTermKeys().slice(0, 10).join(', ')}`);
+    else ctx.reply(`❌ "${term}" not found. Try: ${detection.getAllTermKeys().slice(0, 10).join(', ')}`);
 });
 
 bot.command('stats', (ctx) => {
-    ctx.reply(`📊 *STATS*\nScammers: ${getScammerCount()}\nLinks: ${linkModule.getReportedLinkCount()}\nPartners: ${partnerSystem.getPartnersCount()}\nTips: ${dailyTips.length}\nTerms: ${Object.keys(scamTerms).length}`, { parse_mode: 'Markdown' });
+    ctx.reply(`📊 *STATS*\nScammers: ${getScammerCount()}\nLinks: ${linkModule.getReportedLinkCount()}\nPartners: ${partnerSystem.getPartnersCount()}\nTips: ${dailyTips.length}\nTerms: ${Object.keys(detection.scamTerms).length}`, { parse_mode: 'Markdown' });
 });
 
 // Register admin commands
-registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, scamTerms, linkModule);
+registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, detection.scamTerms, linkModule);
 
 // ========== HANDLE PHOTOS (for OCR) ==========
 bot.on('photo', async (ctx) => {
@@ -481,7 +479,7 @@ bot.on('photo', async (ctx) => {
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
-            const reported = checkNumberInDatabase(phone);
+            const reported = detection.checkNumberInDatabase(phone);
             await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
@@ -525,7 +523,7 @@ bot.on('document', async (ctx) => {
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
-            const reported = checkNumberInDatabase(phone);
+            const reported = detection.checkNumberInDatabase(phone);
             await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
