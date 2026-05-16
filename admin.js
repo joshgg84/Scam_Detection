@@ -14,6 +14,7 @@ const STORAGE_FILES = [
     { name: "pendingReports.json", description: "⏳ Reports waiting for verification" },
     { name: "userReports.json", description: "👤 User report history (prevents duplicates)" },
     { name: "real.json", description: "⭐ Trusted numbers (require 3 reports)" },
+    { name: "pleas.json", description: "📋 User pleas for scammer removal" },
     { name: "scammers.js", description: "⚙️ Scammer database manager code" },
     { name: "tips.js", description: "💡 100+ security tips" },
     { name: "bot.js", description: "🤖 Main bot code" },
@@ -37,9 +38,9 @@ function getAdminHelpMessage(partnerSystem, dailyTips, scamTerms, linkModule) {
 👑 *ADMIN COMMANDS*
 
 *Trusted Numbers (real.json)*
-/addtrusted [number] - Add number to trusted list
+/addtrusted [number] [name] - Add number to trusted list
 /removetrusted [number] - Remove from trusted list
-/listtrusted - Show all trusted numbers
+/listtrusted - Show all trusted numbers with names
 
 *Pending Reports*
 /pending - View pending reports awaiting verification
@@ -102,13 +103,14 @@ function registerTrustedNumberCommands(bot, YOUR_ID) {
         
         const args = ctx.message.text.split(' ');
         const phoneNumber = args[1];
+        const name = args.slice(2).join(' ') || 'Unknown';
         
         if (!phoneNumber) {
-            ctx.reply('📞 *Usage:* `/addtrusted 08012345678`\n\nAdds a number to the trusted list. Trusted numbers need 3 unique reports to become scammers.', { parse_mode: 'Markdown' });
+            ctx.reply('📞 *Usage:* `/addtrusted 08012345678 Name of business`\n\nExample: `/addtrusted 08012345678 GTBank Customer Care`', { parse_mode: 'Markdown' });
             return;
         }
         
-        const result = scammersModule.addToTrustedList(phoneNumber);
+        const result = scammersModule.addToTrustedList(phoneNumber, name, ctx.from.username || 'admin');
         ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
     });
     
@@ -136,7 +138,7 @@ function registerTrustedNumberCommands(bot, YOUR_ID) {
             return;
         }
         
-        const trusted = scammersModule.loadTrustedNumbers();
+        const trusted = scammersModule.listTrustedNumbers();
         
         if (trusted.length === 0) {
             ctx.reply('📋 No trusted numbers in real.json');
@@ -145,9 +147,14 @@ function registerTrustedNumberCommands(bot, YOUR_ID) {
         
         let message = `⭐ *TRUSTED NUMBERS* (${trusted.length})\n\n`;
         for (let i = 0; i < trusted.length; i++) {
-            message += `${i+1}. ${trusted[i]}\n`;
+            const item = trusted[i];
+            message += `${i+1}. *${item.phone}* - ${item.name}\n`;
+            if (item.addedAt) {
+                message += `   Added: ${new Date(item.addedAt).toLocaleDateString()}\n`;
+            }
+            message += `\n`;
         }
-        message += `\n📌 These numbers need 3 unique reports to become scammers.`;
+        message += `📌 These numbers need 3 unique reports to become scammers.`;
         
         ctx.reply(message, { parse_mode: 'Markdown' });
     });
@@ -173,7 +180,9 @@ function registerPendingReportsCommands(bot, YOUR_ID) {
         
         for (let i = 0; i < pending.length; i++) {
             const p = pending[i];
-            message += `${i+1}. *${p.phoneNumber}*\n`;
+            message += `${i+1}. *${p.phoneNumber}*`;
+            if (p.trustedName) message += ` (${p.trustedName})`;
+            message += `\n`;
             message += `   Reports: ${p.reportCount}/3\n`;
             message += `   First reported: ${new Date(p.firstReported).toLocaleDateString()}\n`;
             message += `   Last reported: ${new Date(p.lastReported).toLocaleDateString()}\n`;
@@ -284,7 +293,6 @@ function registerPendingReportsCommands(bot, YOUR_ID) {
 // ========== PLEA MANAGEMENT COMMANDS ==========
 function registerPleaCommands(bot, YOUR_ID) {
     
-    // View all pending pleas
     bot.command('pleas', (ctx) => {
         if (ctx.from.id !== YOUR_ID) {
             ctx.reply('❌ Admin only.');
@@ -314,7 +322,6 @@ function registerPleaCommands(bot, YOUR_ID) {
         ctx.reply(message, { parse_mode: 'Markdown' });
     });
     
-    // Approve a plea (remove number from scammers)
     bot.command('approveplea', async (ctx) => {
         if (ctx.from.id !== YOUR_ID) {
             ctx.reply('❌ Admin only.');
@@ -335,7 +342,6 @@ function registerPleaCommands(bot, YOUR_ID) {
         if (result.success) {
             await ctx.reply(`✅ ${result.message}`);
             
-            // Notify the user
             try {
                 await bot.telegram.sendMessage(result.userId, `
 ✅ *PLEA APPROVED*
@@ -356,7 +362,6 @@ Thank you for your patience.
         }
     });
     
-    // Reject a plea
     bot.command('rejectplea', async (ctx) => {
         if (ctx.from.id !== YOUR_ID) {
             ctx.reply('❌ Admin only.');
@@ -377,7 +382,6 @@ Thank you for your patience.
         if (result.success) {
             await ctx.reply(`❌ ${result.message}`);
             
-            // Notify the user
             try {
                 await bot.telegram.sendMessage(result.userId, `
 ❌ *PLEA REJECTED*
@@ -398,7 +402,6 @@ If you believe this is an error, please contact @JoshuaGiwa.
         }
     });
     
-    // View all pleas (approved/rejected/pending)
     bot.command('allpleas', (ctx) => {
         if (ctx.from.id !== YOUR_ID) {
             ctx.reply('❌ Admin only.');
