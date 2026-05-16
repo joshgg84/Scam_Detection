@@ -1,5 +1,6 @@
 // Nigeria Scam Detector Bot - Main Bot File
 // Creator: Joshua Giwa
+// Bot Name: Jai
 // Community: https://t.me/+8JUqlJ-4SBdlZTM0
 
 const { Telegraf } = require('telegraf');
@@ -38,6 +39,7 @@ function getHelpMessage() {
     return `
 📚 *NIGERIA SCAM DETECTOR - HELP*
 
+*Bot Name:* Jai
 *Creator:* Joshua Giwa
 
 ⏰ *Note:* First message may take 30-50 seconds to wake me up.
@@ -48,6 +50,7 @@ After that, I respond instantly. Thanks for your patience! 🇳🇬
 
 📞 *How to check a phone number:*
 /check 08012345678
+/check +2348012345678
 
 *Commands:*
 /check [message or number] - Analyze any suspicious message
@@ -98,6 +101,18 @@ async function askForTestimonial(ctx, type, details) {
     });
 }
 
+// ========== PHONE NUMBER CLEANING FUNCTION ==========
+function cleanPhoneNumber(phoneNumber) {
+    let cleaned = phoneNumber.toString().replace(/\D/g, '');
+    
+    // Convert +234... to 0... format for database lookup
+    if (cleaned.startsWith('234') && !cleaned.startsWith('0')) {
+        cleaned = '0' + cleaned.slice(3);
+    }
+    
+    return cleaned;
+}
+
 // ========== REGISTER ALL PUBLIC COMMANDS ==========
 
 // Basic commands
@@ -139,6 +154,7 @@ bot.command('check', async (ctx) => {
 
 *Examples:*
 /check 08012345678
+/check +2348012345678
 /check URGENT: Your bank account will be closed
 
 👥 ${COMMUNITY_LINK}
@@ -147,11 +163,20 @@ bot.command('check', async (ctx) => {
     }
     
     const input = args.slice(1).join(' ');
-    const phoneMatch = input.match(/0[789][01]\d{8}/);
+    
+    // Match Nigerian numbers: 08012345678 or +2348012345678 or 2348012345678
+    let phoneMatch = input.match(/0[789][01]\d{8}/);
+    if (!phoneMatch) {
+        phoneMatch = input.match(/\+?234[789][01]\d{8}/);
+    }
+    
     const userId = ctx.from.id;
     
     if (phoneMatch) {
-        const formattedNumber = phoneMatch[0];
+        // Clean the number for database lookup
+        let rawNumber = phoneMatch[0];
+        const formattedNumber = cleanPhoneNumber(rawNumber);
+        
         const reported = detection.checkNumberInDatabase(formattedNumber);
         
         let resultText = reported 
@@ -174,6 +199,7 @@ bot.command('check', async (ctx) => {
         await askForTestimonial(ctx, 'phone', formattedNumber);
         
     } else {
+        // It's a message - analyze it
         const analysisResult = await detection.analyzeMessageWithLinks(input, linkModule);
         const analysis = analysisResult.analysis;
         const linkWarnings = analysisResult.linkWarnings;
@@ -267,7 +293,7 @@ bot.command('report', async (ctx) => {
     
     const userId = ctx.from.id;
     const username = ctx.from.username || ctx.from.first_name;
-    const formattedNumber = phoneNumber.toString().trim();
+    const formattedNumber = cleanPhoneNumber(phoneNumber);
     
     const result = await reportNumber(formattedNumber, userId, reason);
     
@@ -336,7 +362,7 @@ Your plea will be reviewed by admin. You will be notified when a decision is mad
     const userId = ctx.from.id;
     const username = ctx.from.username || ctx.from.first_name;
     
-    const cleaned = phoneNumber.replace(/\D/g, '');
+    const cleaned = cleanPhoneNumber(phoneNumber);
     if (cleaned.length < 8 || cleaned.length > 14) {
         ctx.reply('❌ Invalid phone number format.');
         return;
@@ -473,11 +499,12 @@ bot.on('photo', async (ctx) => {
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
+    const phoneMatch = extractedText.match(/0[789][01]\d{8}/);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
-            const reported = detection.checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
+            const cleaned = cleanPhoneNumber(phone);
+            const reported = detection.checkNumberInDatabase(cleaned);
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${cleaned}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
     
@@ -517,11 +544,12 @@ bot.on('document', async (ctx) => {
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
+    const phoneMatch = extractedText.match(/0[789][01]\d{8}/);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
-            const reported = detection.checkNumberInDatabase(phone);
-            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${phone}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
+            const cleaned = cleanPhoneNumber(phone);
+            const reported = detection.checkNumberInDatabase(cleaned);
+            await ctx.reply(`${reported ? '🚨' : '📞'} *Phone found:* ${cleaned}\n${reported ? '⚠️ REPORTED SCAMMER!' : 'Not reported yet.'}`, { parse_mode: 'Markdown' });
         }
     }
     
