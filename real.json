@@ -1,20 +1,55 @@
 {
   "numbers": [
-    "09025839789",
-    "07063581334",
-    "08012345678",
-    "08123456789",
-    "07098765432",
-    "08009876543",
-    "0700GTBANK",
-    "08098211234",
-    "112",
-    "199",
-    "121",
-    "300",
-    "07086002560"
+    {
+      "phone": "09025839789",
+      "name": "Joshua Giwa"
+    },
+    {
+      "phone": "07063581334",
+      "name": "Nehemiah Giwa"
+    },
+    {
+      "phone": "08012345678",
+      "name": "Nehemiah Giwa"
+    },
+    {
+      "phone": "07098765432",
+      "name": "Peace Albert"
+    },
+    {
+      "phone": "+2349116299599",
+      "name": "Nancy Taraba"
+    },
+    {
+      "phone": "0700GTBANK",
+      "name": "GTBank Customer Care"
+    },
+    {
+      "phone": "08098211234",
+      "name": "Access Bank Customer Care"
+    },
+    {
+      "phone": "112",
+      "name": "National Emergency Number"
+    },
+    {
+      "phone": "199",
+      "name": "National Emergency Number (Alternate)"
+    },
+    {
+      "phone": "121",
+      "name": "MTN Customer Care"
+    },
+    {
+      "phone": "300",
+      "name": "Glo Customer Care"
+    },
+    {
+      "phone": "07086002560",
+      "name": "Unknown - Add name"
+    }
   ],
   "description": "Numbers in this list require 3 unique reports before being marked as scammer",
-  "lastUpdated": "2026-05-14T00:00:00.000Z",
-  "totalTrusted": 13
+  "lastUpdated": "2026-05-16T00:00:00.000Z",
+  "totalTrusted": 12
 }
