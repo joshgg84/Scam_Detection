@@ -25,39 +25,67 @@ function loadTrustedNumbers() {
 function isTrustedNumber(phoneNumber) {
     const cleaned = phoneNumber.toString().replace(/\D/g, '');
     const trusted = loadTrustedNumbers();
-    return trusted.includes(cleaned);
+    return trusted.some(item => {
+        const itemCleaned = item.phone.toString().replace(/\D/g, '');
+        return itemCleaned === cleaned;
+    });
 }
 
-function addToTrustedList(phoneNumber) {
+function getTrustedNumberInfo(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const trusted = loadTrustedNumbers();
+    return trusted.find(item => item.phone.toString().replace(/\D/g, '') === cleaned);
+}
+
+function addToTrustedList(phoneNumber, name, addedBy = 'admin') {
     const cleaned = phoneNumber.toString().replace(/\D/g, '');
     let trusted = loadTrustedNumbers();
     
-    if (!trusted.includes(cleaned)) {
-        trusted.push(cleaned);
-        fs.writeFileSync(REAL_FILE, JSON.stringify({
-            numbers: trusted,
-            lastUpdated: new Date().toISOString(),
-            totalTrusted: trusted.length
-        }, null, 2));
-        return { success: true, message: `${cleaned} added to trusted list` };
+    // Check if already exists
+    if (trusted.some(item => item.phone.toString().replace(/\D/g, '') === cleaned)) {
+        return { success: false, message: `${cleaned} already in trusted list` };
     }
-    return { success: false, message: `${cleaned} already in trusted list` };
+    
+    // Add new entry
+    trusted.push({
+        phone: cleaned,
+        name: name || 'Unknown',
+        addedBy: addedBy,
+        addedAt: new Date().toISOString()
+    });
+    
+    fs.writeFileSync(REAL_FILE, JSON.stringify({
+        numbers: trusted,
+        description: "Numbers in this list require 3 unique reports before being marked as scammer",
+        lastUpdated: new Date().toISOString(),
+        totalTrusted: trusted.length
+    }, null, 2));
+    
+    return { success: true, message: `${cleaned} (${name}) added to trusted list` };
 }
 
 function removeFromTrustedList(phoneNumber) {
     const cleaned = phoneNumber.toString().replace(/\D/g, '');
     let trusted = loadTrustedNumbers();
+    const removed = trusted.find(item => item.phone.toString().replace(/\D/g, '') === cleaned);
     
-    if (trusted.includes(cleaned)) {
-        const newTrusted = trusted.filter(n => n !== cleaned);
-        fs.writeFileSync(REAL_FILE, JSON.stringify({
-            numbers: newTrusted,
-            lastUpdated: new Date().toISOString(),
-            totalTrusted: newTrusted.length
-        }, null, 2));
-        return { success: true, message: `${cleaned} removed from trusted list` };
+    if (!removed) {
+        return { success: false, message: `${cleaned} not found in trusted list` };
     }
-    return { success: false, message: `${cleaned} not found in trusted list` };
+    
+    const newTrusted = trusted.filter(item => item.phone.toString().replace(/\D/g, '') !== cleaned);
+    fs.writeFileSync(REAL_FILE, JSON.stringify({
+        numbers: newTrusted,
+        description: "Numbers in this list require 3 unique reports before being marked as scammer",
+        lastUpdated: new Date().toISOString(),
+        totalTrusted: newTrusted.length
+    }, null, 2));
+    
+    return { success: true, message: `${cleaned} (${removed.name}) removed from trusted list` };
+}
+
+function listTrustedNumbers() {
+    return loadTrustedNumbers();
 }
 
 // ========== LOAD SCAMMERS ==========
@@ -195,6 +223,7 @@ function rejectPendingReport(phoneNumber) {
 function reportNumber(phoneNumber, userId, reason) {
     const cleaned = phoneNumber.toString().replace(/\D/g, '');
     const isTrusted = isTrustedNumber(cleaned);
+    const trustedInfo = isTrusted ? getTrustedNumberInfo(cleaned) : null;
     
     // Check if user already reported this number
     if (hasUserReported(userId, cleaned)) {
@@ -240,7 +269,7 @@ function reportNumber(phoneNumber, userId, reason) {
                 
                 return {
                     success: true,
-                    message: `🚨 ${cleaned} has been VERIFIED as a SCAMMER after 3 unique reports!`,
+                    message: `🚨 ${cleaned} (${trustedInfo?.name || 'Trusted Number'}) has been VERIFIED as a SCAMMER after 3 unique reports!`,
                     status: 'verified',
                     total: scammers.length
                 };
@@ -250,7 +279,7 @@ function reportNumber(phoneNumber, userId, reason) {
             
             return {
                 success: true,
-                message: `✅ ${cleaned} reported. Need ${3 - existing.reportCount} more UNIQUE report(s) to verify.`,
+                message: `✅ ${cleaned} (${trustedInfo?.name || 'Trusted Number'}) reported. Need ${3 - existing.reportCount} more UNIQUE report(s) to verify.`,
                 status: 'pending',
                 reportCount: existing.reportCount
             };
@@ -262,6 +291,7 @@ function reportNumber(phoneNumber, userId, reason) {
             reportCount: 1,
             reportedBy: [userId],
             reasons: [reason],
+            trustedName: trustedInfo?.name || null,
             firstReported: new Date().toISOString(),
             lastReported: new Date().toISOString()
         });
@@ -272,7 +302,7 @@ function reportNumber(phoneNumber, userId, reason) {
         
         return {
             success: true,
-            message: `✅ ${cleaned} reported. This number is TRUSTED. Need 2 more UNIQUE reports to verify as scammer.`,
+            message: `✅ ${cleaned} (${trustedInfo?.name || 'Trusted Number'}) reported. This number is TRUSTED. Need 2 more UNIQUE reports to verify as scammer.`,
             status: 'pending',
             reportCount: 1
         };
@@ -333,7 +363,7 @@ function submitPlea(phoneNumber, userId, username, reason) {
         };
     }
     
-    // Check for previously rejected plea (optional cooldown)
+    // Check for previously rejected plea (30 day cooldown)
     const rejectedPlea = pleas.pleas.find(p => p.phoneNumber === cleaned && p.status === 'rejected');
     if (rejectedPlea) {
         const daysSinceRejection = (new Date() - new Date(rejectedPlea.reviewedAt)) / (1000 * 60 * 60 * 24);
@@ -460,9 +490,10 @@ module.exports = {
     
     // Trusted numbers
     isTrustedNumber,
+    getTrustedNumberInfo,
     addToTrustedList,
     removeFromTrustedList,
-    loadTrustedNumbers,
+    listTrustedNumbers,
     
     // Pending reports
     getPendingReports,
