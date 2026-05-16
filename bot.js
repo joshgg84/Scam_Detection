@@ -4,8 +4,6 @@
 
 const { Telegraf } = require('telegraf');
 const fs = require('fs');
-const { addScammer, getScammerCount, getAllScammers, getRecentScammers } = require('./scammers.js');
-const { dailyTips } = require('./tips.js');
 
 // Import modules
 const partnerSystem = require('./partner.js');
@@ -14,6 +12,8 @@ const linkModule = require('./links.js');
 const detection = require('./detection.js');
 const referralSystem = require('./referrals.js');
 const { registerAdminCommands } = require('./admin.js');
+const { getScammerCount, getAllScammers, getRecentScammers, reportNumber, submitPlea } = require('./scammers.js');
+const { dailyTips } = require('./tips.js');
 
 // ========== CONFIGURATION ==========
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -269,7 +269,6 @@ bot.command('report', async (ctx) => {
     const username = ctx.from.username || ctx.from.first_name;
     const formattedNumber = phoneNumber.toString().trim();
     
-    // Use the new reportNumber function from scammers.js
     const result = await reportNumber(formattedNumber, userId, reason);
     
     if (result.success) {
@@ -343,8 +342,6 @@ Your plea will be reviewed by admin. You will be notified when a decision is mad
         return;
     }
     
-    // Need to import submitPlea from scammers.js
-    const { submitPlea } = require('./scammers.js');
     const result = submitPlea(cleaned, userId, username, reason);
     
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
