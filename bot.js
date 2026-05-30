@@ -144,6 +144,101 @@ async function askForTestimonial(ctx, type, details) {
     });
 }
 
+// ========== API HANDLERS FOR WEBSITE ==========
+async function handleCheckNumber(args) {
+    const phoneNumber = args[0];
+    if (!phoneNumber || !phoneNumber.match(/0[789][01]\d{8}/)) {
+        return `📞 *Check Phone Number*\n\nUsage: /checknumber 08012345678`;
+    }
+    
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    const scammers = getAllScammers();
+    const isScammer = scammers.includes(cleaned);
+    
+    return isScammer 
+        ? `🚨 *ALERT!*\n${phoneNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money`
+        : `✅ *CLEAR*\n${phoneNumber} has no reports.\n\n⚠️ Still be cautious.`;
+}
+
+async function handleCheckMessage(args) {
+    const message = args.join(' ');
+    if (!message) {
+        return `📝 *Check Message*\n\nUsage: /checkmsg [suspicious message]`;
+    }
+    
+    const analysis = detection.analyzeMessage(message);
+    let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
+    if (analysis.alerts.length > 0) {
+        response += `*Why this is suspicious:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
+    }
+    response += `*What to do:* ${analysis.recommendation}`;
+    return response;
+}
+
+async function handleCheckLink(args) {
+    const url = args[0];
+    if (!url) return `🔗 *Check Link*\n\nUsage: /checklink https://example.com`;
+    
+    const reported = linkModule.checkLink(url);
+    const analysis = linkModule.analyzeLink(url);
+    
+    if (reported) {
+        return `🚨 *SCAM LINK DETECTED!*\n\nURL: ${url}\nReason: ${reported.reason}\n❌ DO NOT CLICK!`;
+    } else if (analysis.riskScore >= 30) {
+        return `🟡 *SUSPICIOUS LINK*\n\nRisk Score: ${analysis.riskScore}/100\n${analysis.reasons.slice(0, 2).join('\n')}\n⚠️ Be very careful.`;
+    } else {
+        return `🟢 *LINK APPEARS SAFE*\n\nNo scam reports for this link.\n⚠️ Still be cautious.`;
+    }
+}
+
+async function handleReport(args, userId) {
+    const phoneNumber = args[0];
+    const reason = args.slice(1).join(' ') || 'Suspicious activity';
+    if (!phoneNumber) return `📢 *Report Scammer*\n\nUsage: /report 08012345678 [reason]`;
+    
+    const result = await reportNumber(phoneNumber, userId || 'web_user', reason);
+    return result.message;
+}
+
+async function handleSearch(args) {
+    const query = args[0];
+    if (!query) return `🔍 *Search Scammers*\n\nUsage: /search 080`;
+    
+    const scammers = getAllScammers();
+    const results = scammers.filter(s => s.includes(query));
+    
+    if (results.length === 0) return `🔍 No scammers found matching "${query}"`;
+    return `🔍 *Search Results for "${query}"*\n\nFound ${results.length} number(s):\n${results.slice(0, 10).join('\n')}`;
+}
+
+async function handleHelp() {
+    return `📚 *DETECTIVE JAI - COMMANDS*\n\n📞 /checknumber 08012345678\n📝 /checkmsg [message]\n🔗 /checklink [url]\n📢 /report [number] [reason]\n🔍 /search [digits]\n📊 /stats\n\n🆓 Free forever.`;
+}
+
+async function handleStatsAPI() {
+    return `📊 *STATS*\nScammers reported: ${getScammerCount()}\n🆓 Free forever\n🇳🇬 Protecting Nigerians`;
+}
+
+async function handleAutoDetect(message) {
+    const phoneMatch = message.match(/0[789][01]\d{8}/);
+    if (phoneMatch) return await handleCheckNumber([phoneMatch[0]]);
+    
+    const urlMatch = message.match(/https?:\/\/[^\s]+/);
+    if (urlMatch) return await handleCheckLink([urlMatch[0]]);
+    
+    const analysis = detection.analyzeMessage(message);
+    if (analysis.riskScore >= 10) {
+        let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
+        if (analysis.alerts.length > 0) {
+            response += `*Suspicious signs:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
+        }
+        response += `*Recommendation:* ${analysis.recommendation}`;
+        return response;
+    }
+    
+    return `🔍 I analyzed your message.\n\nNo obvious scam indicators.\n\n⚠️ Always be cautious with unknown senders.\n\nType /help to see commands.`;
+}
+
 // ========== TELEGRAM BOT COMMANDS ==========
 
 // Basic commands
@@ -592,110 +687,15 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// ========== API GATEWAY FOR WEBSITE ==========
+// ========== API GATEWAY FOR WEBSITE (SAME PORT) ==========
 const express = require('express');
-const apiApp = express();
-const API_PORT = process.env.API_PORT || 3001;
+const cors = require('cors');
 
+const apiApp = express();
+apiApp.use(cors());
 apiApp.use(express.json());
 
-// ========== HANDLERS FOR API GATEWAY ==========
-
-async function handleCheckNumber(args) {
-    const phoneNumber = args[0];
-    if (!phoneNumber || !phoneNumber.match(/0[789][01]\d{8}/)) {
-        return `📞 *Check Phone Number*\n\nUsage: /checknumber 08012345678`;
-    }
-    
-    const cleaned = phoneNumber.replace(/\D/g, '');
-    const scammers = getAllScammers();
-    const isScammer = scammers.includes(cleaned);
-    
-    return isScammer 
-        ? `🚨 *ALERT!*\n${phoneNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money`
-        : `✅ *CLEAR*\n${phoneNumber} has no reports.\n\n⚠️ Still be cautious.`;
-}
-
-async function handleCheckMessage(args) {
-    const message = args.join(' ');
-    if (!message) {
-        return `📝 *Check Message*\n\nUsage: /checkmsg [suspicious message]`;
-    }
-    
-    const analysis = detection.analyzeMessage(message);
-    let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
-    if (analysis.alerts.length > 0) {
-        response += `*Why this is suspicious:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
-    }
-    response += `*What to do:* ${analysis.recommendation}`;
-    return response;
-}
-
-async function handleCheckLink(args) {
-    const url = args[0];
-    if (!url) return `🔗 *Check Link*\n\nUsage: /checklink https://example.com`;
-    
-    const reported = linkModule.checkLink(url);
-    const analysis = linkModule.analyzeLink(url);
-    
-    if (reported) {
-        return `🚨 *SCAM LINK DETECTED!*\n\nURL: ${url}\nReason: ${reported.reason}\n❌ DO NOT CLICK!`;
-    } else if (analysis.riskScore >= 30) {
-        return `🟡 *SUSPICIOUS LINK*\n\nRisk Score: ${analysis.riskScore}/100\n${analysis.reasons.slice(0, 2).join('\n')}\n⚠️ Be very careful.`;
-    } else {
-        return `🟢 *LINK APPEARS SAFE*\n\nNo scam reports for this link.\n⚠️ Still be cautious.`;
-    }
-}
-
-async function handleReport(args, userId) {
-    const phoneNumber = args[0];
-    const reason = args.slice(1).join(' ') || 'Suspicious activity';
-    if (!phoneNumber) return `📢 *Report Scammer*\n\nUsage: /report 08012345678 [reason]`;
-    
-    const result = await reportNumber(phoneNumber, userId || 'website_user', reason);
-    return result.message;
-}
-
-async function handleSearch(args) {
-    const query = args[0];
-    if (!query) return `🔍 *Search Scammers*\n\nUsage: /search 080`;
-    
-    const scammers = getAllScammers();
-    const results = scammers.filter(s => s.includes(query));
-    
-    if (results.length === 0) return `🔍 No scammers found matching "${query}"`;
-    return `🔍 *Search Results for "${query}"*\n\nFound ${results.length} number(s):\n${results.slice(0, 10).join('\n')}`;
-}
-
-async function handleHelp() {
-    return `📚 *DETECTIVE JAI - COMMANDS*\n\n📞 /checknumber 08012345678\n📝 /checkmsg [message]\n🔗 /checklink [url]\n📢 /report [number] [reason]\n🔍 /search [digits]\n📊 /stats\n\n🆓 Free forever.`;
-}
-
-async function handleStats() {
-    return `📊 *STATS*\nScammers reported: ${getScammerCount()}\n🆓 Free forever\n🇳🇬 Protecting Nigerians`;
-}
-
-async function handleAutoDetect(message) {
-    const phoneMatch = message.match(/0[789][01]\d{8}/);
-    if (phoneMatch) return await handleCheckNumber([phoneMatch[0]]);
-    
-    const urlMatch = message.match(/https?:\/\/[^\s]+/);
-    if (urlMatch) return await handleCheckLink([urlMatch[0]]);
-    
-    const analysis = detection.analyzeMessage(message);
-    if (analysis.riskScore >= 10) {
-        let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
-        if (analysis.alerts.length > 0) {
-            response += `*Suspicious signs:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
-        }
-        response += `*Recommendation:* ${analysis.recommendation}`;
-        return response;
-    }
-    
-    return `🔍 I analyzed your message.\n\nNo obvious scam indicators.\n\n⚠️ Always be cautious with unknown senders.\n\nType /help to see commands.`;
-}
-
-// ========== SINGLE GATEWAY ENDPOINT ==========
+// Main chat endpoint for website
 apiApp.post('/api/chat', async (req, res) => {
     const { message, userId } = req.body;
     
@@ -703,7 +703,7 @@ apiApp.post('/api/chat', async (req, res) => {
         return res.status(400).json({ error: 'Message is required' });
     }
     
-    console.log(`📨 Gateway: ${message.substring(0, 50)}...`);
+    console.log(`📨 API: ${message.substring(0, 50)}...`);
     
     const command = message.split(' ')[0].toLowerCase();
     const args = message.split(' ').slice(1);
@@ -722,7 +722,7 @@ apiApp.post('/api/chat', async (req, res) => {
         } else if (command === '/search') {
             response = await handleSearch(args);
         } else if (command === '/stats') {
-            response = await handleStats();
+            response = await handleStatsAPI();
         } else if (command === '/help') {
             response = await handleHelp();
         } else {
@@ -730,22 +730,31 @@ apiApp.post('/api/chat', async (req, res) => {
         }
         
         res.json({ success: true, response: response });
+        
     } catch (err) {
-        console.error('Gateway error:', err);
+        console.error('API error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
 
-// Health check endpoint
+// Health check for UptimeRobot
 apiApp.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString(), scammers: getScammerCount() });
+    res.json({ 
+        status: 'ok', 
+        timestamp: new Date().toISOString(), 
+        scammers: getScammerCount(),
+        uptime: process.uptime()
+    });
 });
 
-// Start API server
-apiApp.listen(API_PORT, () => {
-    console.log(`🔗 API Gateway running on port ${API_PORT}`);
-    console.log(`   POST /api/chat - Single endpoint for website`);
-    console.log(`   GET  /health - Health check`);
+// Stats endpoint for website
+apiApp.get('/api/stats', (req, res) => {
+    res.json({ scammers: getScammerCount() });
+});
+
+// Simple test endpoint
+apiApp.get('/api/test', (req, res) => {
+    res.json({ status: 'ok', message: 'Bot API is online', timestamp: new Date().toISOString() });
 });
 
 // ========== DAILY TIPS SCHEDULER ==========
@@ -767,7 +776,7 @@ async function sendDailyTipToGroup() {
         const sponsorMessage = partnerSystem.getDailyTipSponsorMessage();
         if (sponsorMessage) todaysTip += sponsorMessage;
         
-        const message = `${todaysTip}\n\n🇳🇬 Stay safe! Report scammers to @Det_jai_bot`;
+        const message = `${todaysTip}\n\n🇳🇬 Stay safe! Report scammers to @JoshuaGiwaBot`;
         
         try {
             await bot.telegram.sendMessage(GROUP_ID, message, { parse_mode: 'Markdown' });
@@ -799,13 +808,34 @@ bot.action('copy_group', async (ctx) => { await referralSystem.handleReferralCal
 bot.action('show_leaderboard', async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
 bot.action(/my_stats_\d+/, async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
 bot.action('get_referral_link', async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
+bot.action('share_bot', async (ctx) => {
+    await ctx.answerCbQuery();
+    const shareText = `🚨 *FREE SCAM DETECTOR* 🚨\n\nBefore you send money, check the number first.\n\n👉 @JoshuaGiwaBot\n\nFree. Fast. Anonymous.`;
+    const buttons = {
+        inline_keyboard: [
+            [{ text: "📱 Share on WhatsApp", url: `https://wa.me/?text=${encodeURIComponent(shareText)}` }],
+            [{ text: "📋 Copy Bot Link", callback_data: "copy_bot_link" }]
+        ]
+    };
+    await ctx.reply("📢 *Share This Life-Saving Tool*\n\nHelp your friends and family avoid scams.", {
+        parse_mode: 'Markdown',
+        reply_markup: buttons
+    });
+});
+bot.action('copy_bot_link', async (ctx) => {
+    await ctx.answerCbQuery("Bot link copied!", { show_alert: false });
+    await ctx.reply(`✅ *Bot link copied!*\n\nShare: @JoshuaGiwaBot`);
+});
 
-// ========== WEB SERVER (for bot health) ==========
-const expressApp = express();
-const PORT = process.env.PORT || 3000;
-expressApp.get('/', (req, res) => res.send('Detective Jai Bot is running!'));
-expressApp.get('/health', (req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
-expressApp.listen(PORT, () => console.log(`🌐 Bot web server on port ${PORT}`));
+// ========== START API SERVER ==========
+const API_PORT = process.env.PORT || 3000;
+apiApp.listen(API_PORT, () => {
+    console.log(`🔗 API Gateway running on port ${API_PORT}`);
+    console.log(`   POST /api/chat - Chat endpoint for website`);
+    console.log(`   GET  /health - Health check`);
+    console.log(`   GET  /api/stats - Statistics`);
+    console.log(`   GET  /api/test - Test endpoint`);
+});
 
 // ========== START LEADERBOARD SCHEDULER ==========
 referralSystem.startLeaderboardScheduler(bot);
