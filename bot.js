@@ -741,13 +741,7 @@ apiApp.post('/api/chat', async (req, res) => {
 apiApp.get('/', (req, res) => {
     res.json({ 
         status: 'ok', 
-        service: 'Detective Jai Bot API',
-        endpoints: {
-            chat: 'POST /api/chat',
-            health: 'GET /health',
-            stats: 'GET /api/stats',
-            test: 'GET /api/test'
-        }
+        service: 'Detective Jai Bot API'
     });
 });
 
