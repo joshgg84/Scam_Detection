@@ -1,5 +1,6 @@
 // detection.js - Scam Detection and Analysis Module
-// Contains analyzeMessage function with detailed explanations
+// Contains analyzeMessage function with context-aware detection
+// Flags scam phrases, not innocent keywords
 
 const fs = require('fs');
 const linkModule = require('./links.js');
@@ -57,124 +58,173 @@ function checkNumberInDatabase(phoneNumber) {
     });
 }
 
-// ========== ENHANCED SCAM DETECTION WITH EXPLANATIONS ==========
+// ========== ENHANCED SCAM DETECTION (CONTEXT-AWARE) ==========
 function analyzeMessage(text) {
     const alerts = [];
     let riskScore = 0;
     const lowerText = text.toLowerCase();
 
-    // Red flags with explanations
-    const redFlags = [
-        { word: 'urgent', points: 10, explanation: 'Scammers create FALSE URGENCY to make you act without thinking.' },
-        { word: 'immediately', points: 10, explanation: 'Legitimate organizations don\'t demand immediate action via text.' },
-        { word: 'verify account', points: 15, explanation: 'Scammers pretend your account needs verification to steal login details.' },
-        { word: 'bank details', points: 20, explanation: 'NO bank will ask for your details via message.' },
-        { word: 'winning', points: 15, explanation: 'You cannot win a prize you never entered.' },
-        { word: 'prize', points: 15, explanation: 'Real prizes don\'t require payment or personal info via text.' },
-        { word: 'lottery', points: 15, explanation: 'Lottery scams promise money to steal your information.' },
-        { word: 'prince', points: 20, explanation: 'Classic "Nigerian Prince" scam - they need your help to transfer money.' },
-        { word: 'activate your card', points: 20, explanation: 'Banks never ask you to activate cards via links in messages.' },
-        { word: 'suspended account', points: 15, explanation: 'Fake account suspension threats to make you panic and click.' },
-        { word: 'click here', points: 10, explanation: 'Scammers hide malicious links behind "click here".' },
-        { word: 'update your profile', points: 10, explanation: 'Fake update requests to steal your login information.' },
-        { word: 'confirm your pin', points: 25, explanation: 'NEVER share your PIN with anyone - not even "bank staff".' },
-        { word: 'send money', points: 20, explanation: 'Direct money request from stranger = SCAM.' },
-        { word: 'gift card', points: 20, explanation: 'Gift cards are for gifts, not payments. This is a scam.' },
-        { word: 'bitcoin', points: 15, explanation: 'Scammers love cryptocurrency because it\'s hard to trace.' },
-        { word: 'double your money', points: 25, explanation: 'No legitimate investment doubles your money quickly.' },
-        { word: 'rent', points: 10, explanation: 'Account rental scams use your identity for fraud.' },
-        { word: 'linkedin', points: 10, explanation: 'Fake LinkedIn accounts are used for employment scams.' },
-        { word: 'facebook', points: 5, explanation: 'Social media account scams are common. Be cautious.' },
-        { word: 'instagram', points: 5, explanation: 'Fake Instagram accounts are used for impersonation scams.' },
-        { word: 'work from home', points: 15, explanation: 'Fake work-from-home jobs ask for "registration fees".' },
-        { word: 'easy money', points: 20, explanation: 'If it sounds too easy, it\'s a trap.' },
-        { word: 'bvn update', points: 25, explanation: 'NIMC/BVN updates NEVER happen via text message.' },
-        { word: 'nin verification', points: 25, explanation: 'NIN verification is ONLY done on official government websites.' },
-        { word: 'loan approval', points: 15, explanation: 'Fake loan approvals ask for advance fees before giving money.' },
-        { word: 'processing fee', points: 20, explanation: 'Legitimate services deduct fees from what they give you, not upfront.' },
-        { word: 'guaranteed returns', points: 25, explanation: 'No investment guarantees returns. This is a scam.' },
-        { word: 'risk free', points: 20, explanation: 'Every investment carries risk. "Risk-free" is a lie.' },
-        { word: 'deposit now', points: 15, explanation: 'Urgent deposit requests are often rental or property scams.' },
-        { word: 'holding fee', points: 15, explanation: 'Fake landlords ask for holding fees on properties that don\'t exist.' }
+    // ========== SCAM PHRASES (HIGH CONFIDENCE) ==========
+    const scamPhrases = [
+        // Investment scams
+        { phrase: 'double your money', points: 30, explanation: 'No legitimate investment doubles your money quickly. This is a scam.' },
+        { phrase: 'double your investment', points: 30, explanation: 'No legitimate investment doubles your money quickly. This is a scam.' },
+        { phrase: 'guaranteed profit', points: 30, explanation: 'No investment guarantees profit. This is a red flag.' },
+        { phrase: 'guaranteed returns', points: 30, explanation: 'No investment guarantees returns. This is a scam tactic.' },
+        { phrase: 'risk free investment', points: 25, explanation: 'All investments carry risk. "Risk-free" is a lie.' },
+        { phrase: 'risk free profit', points: 25, explanation: 'No profit is risk-free. This is a scam promise.' },
+        { phrase: '100% returns', points: 30, explanation: '100% returns promise is mathematically impossible in legitimate investments.' },
+        { phrase: '100% profit', points: 30, explanation: 'No legitimate investment guarantees 100% profit.' },
+        { phrase: 'get rich quick', points: 25, explanation: '"Get rich quick" schemes always fail. Real wealth takes time.' },
+        { phrase: 'easy money', points: 25, explanation: 'Scammers promise easy money to lure you. Real money requires work.' },
+        { phrase: 'make money fast', points: 20, explanation: 'Fast money promises are usually scams.' },
+        { phrase: 'passive income', points: 10, explanation: 'Be cautious of "passive income" promises without a clear business model.' },
+        
+        // Forex/Crypto scam phrases (not the words alone)
+        { phrase: 'forex guaranteed profit', points: 25, explanation: 'No forex trading strategy guarantees profit. This is a scam.' },
+        { phrase: 'forex guaranteed returns', points: 25, explanation: 'Forex trading never guarantees returns. This is a scam.' },
+        { phrase: 'crypto guaranteed returns', points: 25, explanation: 'Cryptocurrency investments do not guarantee returns. This is a scam.' },
+        { phrase: 'forex risk free', points: 25, explanation: 'Forex trading always carries risk. "Risk-free forex" does not exist.' },
+        { phrase: 'crypto risk free', points: 25, explanation: 'Crypto investments carry risk. "Risk-free crypto" is a scam.' },
+        { phrase: 'crypto double your money', points: 30, explanation: 'No cryptocurrency investment doubles your money guaranteed.' },
+        { phrase: 'trading signals guaranteed', points: 20, explanation: 'No trading signal service can guarantee wins.' },
+        { phrase: 'forex signals guaranteed', points: 20, explanation: 'No forex signal service guarantees profit.' },
+        
+        // Urgency + investment
+        { phrase: 'limited spots', points: 10, explanation: 'False scarcity to pressure you into quick decisions.' },
+        { phrase: 'limited slots', points: 10, explanation: 'False scarcity tactic to rush your decision.' },
+        { phrase: 'act now', points: 10, explanation: 'Urgency tactic to prevent you from thinking clearly.' },
+        { phrase: 'don\'t miss out', points: 8, explanation: 'Scammers use FOMO to pressure you.' },
+        
+        // MLM/Pyramid scheme phrases
+        { phrase: 'join my team', points: 10, explanation: 'MLM and pyramid schemes use "join my team" recruitment.' },
+        { phrase: 'build your downline', points: 15, explanation: 'Pyramid schemes focus on building downlines, not selling products.' },
+        { phrase: 'binary plan', points: 15, explanation: 'Binary compensation plans are common in scam MLMs.' },
+        { phrase: 'matrix plan', points: 15, explanation: 'Matrix plans are often pyramid schemes in disguise.' },
+        { phrase: 'unilevel plan', points: 10, explanation: 'Be cautious of MLM compensation plans.' },
+        
+        // Crypto scam phrases
+        { phrase: 'cloud mining', points: 20, explanation: 'Cloud mining is often a scam. Most legitimate mining requires equipment.' },
+        { phrase: 'crypto giveaway', points: 15, explanation: 'Crypto giveaways are almost always scams.' },
+        { phrase: 'airdrop scam', points: 15, explanation: 'Fake airdrops are used to steal your wallet information.' },
+        { phrase: 'liquidity mining', points: 15, explanation: 'Scam liquidity mining platforms steal your crypto.' },
+        { phrase: 'pump and dump', points: 25, explanation: 'Pump and dump schemes are illegal. You will lose money.' },
+        { phrase: 'crypto pump', points: 20, explanation: 'Crypto pump and dump groups are scams.' },
+        
+        // Banking/Account scams
+        { phrase: 'verify your account', points: 15, explanation: 'Scammers pretend your account needs verification to steal login details.' },
+        { phrase: 'account suspended', points: 15, explanation: 'Fake account suspension threats to make you panic and click.' },
+        { phrase: 'deactivate your account', points: 15, explanation: 'Fake deactivation threats to scare you.' },
+        { phrase: 'click here to verify', points: 15, explanation: 'Scammers hide malicious links behind "click here".' },
+        { phrase: 'confirm your pin', points: 25, explanation: 'NEVER share your PIN with anyone.' },
+        { phrase: 'update your billing', points: 15, explanation: 'Fake update requests to steal payment information.' },
+        
+        // Job scams
+        { phrase: 'work from home', points: 10, explanation: 'Fake work-from-home jobs often ask for "registration fees".' },
+        { phrase: 'data entry job', points: 8, explanation: 'Fake data entry jobs are common scams.' },
+        { phrase: 'pay to apply', points: 20, explanation: 'Legitimate jobs never ask for payment to apply.' },
+        { phrase: 'registration fee', points: 20, explanation: 'Real jobs don\'t charge registration fees.' },
+        
+        // Rental/Property scams
+        { phrase: 'holding fee', points: 15, explanation: 'Fake landlords ask for holding fees on properties that don\'t exist.' },
+        { phrase: 'deposit now', points: 10, explanation: 'Urgent deposit requests are often rental scams.' },
+        { phrase: 'viewing fee', points: 15, explanation: 'Legitimate landlords don\'t charge viewing fees.' },
+        
+        // Romance scams
+        { phrase: 'military deployment', points: 15, explanation: 'Common romance scam tactic: fake military member needs money.' },
+        { phrase: 'overseas worker', points: 10, explanation: 'Scammers pretend to be overseas workers needing emergency funds.' },
+        { phrase: 'sick relative', points: 10, explanation: 'Fake medical emergencies are common in romance scams.' }
     ];
     
-    const sensitiveInfo = [
+    // ========== SENSITIVE INFO REQUESTS ==========
+    const sensitiveRequests = [
         { word: 'pin', points: 30, explanation: 'Your PIN is the key to your account. NEVER share it.' },
-        { word: 'password', points: 30, explanation: 'No legitimate service asks for your password via message.' },
-        { word: 'otp', points: 30, explanation: 'OTP means "One Time Password". Sharing it gives access to your account.' },
+        { word: 'otp', points: 30, explanation: 'OTP gives access to your account. NEVER share it.' },
         { word: 'bvn', points: 25, explanation: 'BVN is your biometric identity. Scammers use it to impersonate you.' },
-        { word: 'cvv', points: 30, explanation: 'CVV is the security code on your card. Sharing it allows online theft.' },
+        { word: 'cvv', points: 30, explanation: 'CVV allows online theft. NEVER share it.' },
+        { word: 'seed phrase', points: 30, explanation: 'NEVER share your crypto seed phrase. Anyone asking is a scammer.' },
+        { word: 'private key', points: 30, explanation: 'Your private key is like your bank password. Never share it.' },
+        { word: 'recovery phrase', points: 30, explanation: 'Recovery phrase gives full access to your crypto wallet.' },
+        { word: 'wallet address', points: 15, explanation: 'Be cautious sharing your wallet address with strangers.' },
+        { word: 'login details', points: 20, explanation: 'Never share your login details with anyone.' },
+        { word: 'password', points: 25, explanation: 'No legitimate service asks for your password via message.' },
         { word: 'card number', points: 25, explanation: 'Never share your full card number with anyone who contacts you.' },
-        { word: 'nuban', points: 20, explanation: 'Your NUBAN account number can be used to target you.' },
-        { word: 'verification code', points: 30, explanation: 'Verification codes are like passwords - never share them.' },
-        { word: 'passport', points: 20, explanation: 'Scammers use passport photos for identity theft.' },
-        { word: 'driver license', points: 20, explanation: 'Driver\'s license photos can be used to create fake IDs.' },
-        { word: 'nin', points: 25, explanation: 'NIN is your National Identity Number. Guard it carefully.' },
-        { word: 'id card', points: 20, explanation: 'ID cards should never be sent to strangers online.' }
+        { word: 'nuban', points: 15, explanation: 'Your NUBAN account number can be used to target you.' }
     ];
-
-    // Check red flags
-    redFlags.forEach(flag => {
-        if (lowerText.includes(flag.word)) {
-            alerts.push(`⚠️ "${flag.word.toUpperCase()}" → ${flag.explanation}`);
-            riskScore += flag.points;
+    
+    // ========== CHECK SCAM PHRASES ==========
+    for (const phrase of scamPhrases) {
+        if (lowerText.includes(phrase.phrase)) {
+            alerts.push(`⚠️ "${phrase.phrase.toUpperCase()}" → ${phrase.explanation}`);
+            riskScore += phrase.points;
         }
-    });
-
-    // Check sensitive info requests
-    sensitiveInfo.forEach(info => {
+    }
+    
+    // ========== CHECK SENSITIVE INFO REQUESTS ==========
+    for (const info of sensitiveRequests) {
         if (lowerText.includes(info.word)) {
             alerts.push(`🚨 "${info.word.toUpperCase()}" request → ${info.explanation}`);
             riskScore += info.points;
         }
-    });
-
-    // Check for urgency tactics
-    const urgencyWords = ['immediately', 'within 24 hours', 'asap', 'right now', 'today only', 'now'];
-    urgencyWords.forEach(word => {
-        if (lowerText.includes(word)) {
-            alerts.push(`⏰ "False urgency" → Scammers rush you so you don\'t think clearly.`);
-            riskScore += 10;
-        }
-    });
-
-    // Check for phone numbers
-    const phonePatterns = [/0[789][01]\d{8}/g];
-    for (const pattern of phonePatterns) {
-        const matches = text.match(pattern);
-        if (matches) {
-            for (const number of matches) {
-                if (checkNumberInDatabase(number)) {
-                    alerts.push(`🚨 ${number} → This number has been REPORTED as a scammer! DO NOT CALL or SEND MONEY.`);
-                    riskScore += 50;
-                } else {
-                    alerts.push(`📞 Phone number found: ${number} → If this number contacts you, be cautious. You can /report it if it's a scam.`);
-                    riskScore += 5;
-                }
-            }
+    }
+    
+    // ========== CHECK FOR PHONE NUMBERS ==========
+    const phoneMatch = text.match(/0[789][01]\d{8}/);
+    if (phoneMatch) {
+        const reported = checkNumberInDatabase(phoneMatch[0]);
+        if (reported) {
+            alerts.push(`🚨 ${phoneMatch[0]} is a REPORTED SCAMMER! DO NOT CALL or SEND MONEY.`);
+            riskScore += 50;
+        } else {
+            alerts.push(`📞 Phone number found: ${phoneMatch[0]} → Be cautious if this number contacts you.`);
+            riskScore += 5;
         }
     }
-
-    // Determine risk level and final recommendation
+    
+    // ========== CHECK FOR LINKS ==========
+    if (lowerText.includes('http://') || lowerText.includes('https://')) {
+        alerts.push(`🔗 Link detected → Could be phishing. DO NOT click suspicious links.`);
+        riskScore += 15;
+    }
+    
+    // ========== CHECK FOR URGENCY TACTICS ==========
+    const urgencyWords = ['immediately', 'asap', 'right now', 'today only', 'now', 'urgent'];
+    urgencyWords.forEach(word => {
+        if (lowerText.includes(word)) {
+            alerts.push(`⏰ False urgency tactic: "${word.toUpperCase()}" → Scammers rush you so you don't think clearly.`);
+            riskScore += 8;
+        }
+    });
+    
+    // ========== CHECK FOR MONEY REQUESTS ==========
+    const moneyPhrases = ['send money', 'transfer money', 'deposit', 'wire transfer', 'western union'];
+    moneyPhrases.forEach(phrase => {
+        if (lowerText.includes(phrase)) {
+            alerts.push(`💰 Direct money request → Legitimate contacts don't ask for money via unsolicited messages.`);
+            riskScore += 20;
+        }
+    });
+    
+    // ========== DETERMINE RISK LEVEL ==========
     let riskLevel, emoji, recommendation;
     if (riskScore >= 40) {
         riskLevel = "HIGH";
         emoji = "🔴";
-        recommendation = "❌ DO NOT RESPOND. DO NOT CLICK LINKS. DO NOT SEND MONEY.\n✅ Block the sender immediately.\n✅ Report the number: /report [number] [reason]\n✅ Forward this message to EFCC if possible.";
+        recommendation = "❌ DO NOT RESPOND. DO NOT SEND MONEY. DO NOT INVEST.\n✅ Block the sender immediately.\n✅ Report the number: /report [number] [reason]\n✅ Do not click any links.";
     } else if (riskScore >= 20) {
         riskLevel = "MEDIUM";
         emoji = "🟡";
-        recommendation = "⚠️ This message shows clear signs of a scam.\n✅ Verify the sender through an OFFICIAL channel (call their known number).\n✅ Do not click any links.\n✅ Do not share personal information.";
+        recommendation = "⚠️ This message shows clear signs of a scam.\n✅ Verify the sender through an OFFICIAL channel.\n✅ Do not click any links.\n✅ Do not share personal information.";
     } else if (riskScore >= 10) {
         riskLevel = "LOW-MEDIUM";
         emoji = "🟠";
-        recommendation = "⚠️ Some suspicious signs detected.\n✅ Be cautious.\n✅ Verify before responding.\n✅ When in doubt, /report the number for others to check.";
+        recommendation = "⚠️ Some suspicious signs detected.\n✅ Be cautious.\n✅ Verify before responding.\n✅ When in doubt, /report the number.";
     } else {
         riskLevel = "LOW";
         emoji = "🟢";
         recommendation = "✅ No obvious scam indicators.\n⚠️ Still be cautious with unknown senders.\n⚠️ Never share personal information via message.";
     }
-
+    
     return { riskLevel, emoji, riskScore, alerts, recommendation };
 }
 
@@ -196,6 +246,7 @@ async function analyzeMessageWithLinks(text, linkModule) {
                 riskLevel: reported.riskLevel
             });
             analysis.riskScore += 30;
+            analysis.alerts.push(`🚨 REPORTED SCAM LINK: ${link} → ${reported.reason}`);
         } else {
             const linkAnalysis = linkModule.analyzeLink(link);
             if (linkAnalysis.riskScore >= 30) {
@@ -205,7 +256,7 @@ async function analyzeMessageWithLinks(text, linkModule) {
                     reasons: linkAnalysis.reasons.slice(0, 2)
                 });
                 analysis.riskScore += 15;
-                analysis.alerts.push(`⚠️ Link analysis → \`${link}\` is suspicious: ${linkAnalysis.reasons.slice(0, 2).join(', ')}`);
+                analysis.alerts.push(`⚠️ Suspicious link detected → ${link}`);
             }
         }
     }
@@ -232,15 +283,16 @@ URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
 MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
 INFO: "PIN", "OTP", "BVN", "CVV"
 FAKE: "WINNING", "LOTTERY", "PRINCE"
+INVESTMENT: "DOUBLE YOUR MONEY", "GUARANTEED RETURNS", "RISK FREE"
 ACCOUNT: "RENT", "LEASE", "LINKEDIN"
-JOBS: "WORK FROM HOME", "EASY MONEY"
+JOBS: "WORK FROM HOME", "REGISTRATION FEE"
 
 👥 Join our community: https://t.me/+8JUqlJ-4SBdlZTM0`;
 
 const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 
 1. Contact your bank immediately
-2. Save all evidence
+2. Save all evidence (screenshots, messages)
 3. Report to EFCC: 08093322644
 4. Report number to this bot: /report
 5. Join our community for support: https://t.me/+8JUqlJ-4SBdlZTM0`;
