@@ -1,11 +1,10 @@
-// handlers.js - Shared command handlers for both Telegram and API
+// handlers.js - Shared command handlers for both bot and API
 
 const detection = require('./detection.js');
 const linkModule = require('./links.js');
 const partnerSystem = require('./partner.js');
 const { getAllScammers, getScammerCount, reportNumber } = require('./scammers.js');
 
-// ========== HANDLE CHECK NUMBER ==========
 async function handleCheckNumber(phoneNumber) {
     if (!phoneNumber || !phoneNumber.match(/0[789][01]\d{8}/)) {
         return `📞 *Check Phone Number*\n\nUsage: /checknumber 08012345678`;
@@ -25,7 +24,6 @@ async function handleCheckNumber(phoneNumber) {
     return response;
 }
 
-// ========== HANDLE CHECK MESSAGE ==========
 async function handleCheckMessage(messageText) {
     if (!messageText) {
         return `📝 *Check Message*\n\nUsage: /checkmsg [suspicious message]`;
@@ -33,19 +31,12 @@ async function handleCheckMessage(messageText) {
     
     const analysisResult = await detection.analyzeMessageWithLinks(messageText, linkModule);
     const analysis = analysisResult.analysis;
-    const linkWarnings = analysisResult.linkWarnings;
     
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
     response += `*📝 Message:*\n${messageText.substring(0, 300)}${messageText.length > 300 ? '...' : ''}\n\n`;
     
     if (analysis.alerts.length > 0) {
         response += `*🔍 WHY THIS IS SUSPICIOUS:*\n${analysis.alerts.slice(0, 5).join('\n')}\n\n`;
-    }
-    
-    for (const warning of linkWarnings) {
-        if (warning.type === 'reported') {
-            response += `🚨 *REPORTED SCAM LINK:* \`${warning.url}\`\n   Reason: ${warning.reason}\n   ⚠️ DO NOT CLICK!\n\n`;
-        }
     }
     
     response += `*✅ WHAT YOU SHOULD DO:*\n${analysis.recommendation}\n\n`;
@@ -56,7 +47,6 @@ async function handleCheckMessage(messageText) {
     return response;
 }
 
-// ========== HANDLE CHECK LINK ==========
 async function handleCheckLink(url) {
     if (!url) return `🔗 *Check Link*\n\nUsage: /checklink https://example.com`;
     
@@ -72,7 +62,6 @@ async function handleCheckLink(url) {
     }
 }
 
-// ========== HANDLE REPORT ==========
 async function handleReport(phoneNumber, reason, userId) {
     if (!phoneNumber) return `📢 *Report Scammer*\n\nUsage: /report 08012345678 [reason]`;
     
@@ -80,7 +69,6 @@ async function handleReport(phoneNumber, reason, userId) {
     return result.message;
 }
 
-// ========== HANDLE SEARCH ==========
 async function handleSearch(query) {
     if (!query) return `🔍 *Search Scammers*\n\nUsage: /search 080`;
     
@@ -91,17 +79,14 @@ async function handleSearch(query) {
     return `🔍 *Search Results for "${query}"*\n\nFound ${results.length} number(s):\n${results.slice(0, 10).join('\n')}`;
 }
 
-// ========== HANDLE HELP ==========
 function handleHelp() {
     return `📚 *DETECTIVE JAI - COMMANDS*\n\n📞 /checknumber 08012345678\n📝 /checkmsg [message]\n🔗 /checklink [url]\n📢 /report [number] [reason]\n🔍 /search [digits]\n📊 /stats\n\n🆓 Free forever.`;
 }
 
-// ========== HANDLE STATS ==========
 function handleStats() {
     return `📊 *STATS*\nScammers reported: ${getScammerCount()}\n🆓 Free forever\n🇳🇬 Protecting Nigerians`;
 }
 
-// ========== AUTO DETECT ==========
 async function handleAutoDetect(message) {
     const phoneMatch = message.match(/0[789][01]\d{8}/);
     if (phoneMatch) return await handleCheckNumber(phoneMatch[0]);
@@ -122,7 +107,6 @@ async function handleAutoDetect(message) {
     return `🔍 I analyzed your message.\n\nNo obvious scam indicators.\n\n⚠️ Always be cautious with unknown senders.\n\nType /help to see commands.`;
 }
 
-// ========== PROCESS COMMAND ==========
 async function processCommand(message, userId = null) {
     const command = message.split(' ')[0].toLowerCase();
     const args = message.split(' ').slice(1);
