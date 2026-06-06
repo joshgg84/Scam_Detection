@@ -155,9 +155,15 @@ async function handleCheckNumber(args) {
     const scammers = getAllScammers();
     const isScammer = scammers.includes(cleaned);
     
-    return isScammer 
+    let response = isScammer 
         ? `🚨 *ALERT!*\n${phoneNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money`
         : `✅ *CLEAR*\n${phoneNumber} has no reports.\n\n⚠️ Still be cautious.`;
+    
+    // Add random partner support message
+    const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
+    response += `\n\n${supportMessage}`;
+    
+    return response;
 }
 
 async function handleCheckMessage(args) {
@@ -172,6 +178,11 @@ async function handleCheckMessage(args) {
         response += `*Why this is suspicious:*\n${analysis.alerts.slice(0, 3).join('\n')}\n\n`;
     }
     response += `*What to do:* ${analysis.recommendation}`;
+    
+    // Add random partner support message
+    const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
+    response += `\n\n${supportMessage}`;
+    
     return response;
 }
 
@@ -268,7 +279,7 @@ bot.command('myid', (ctx) => ctx.reply(`Your ID: \`${ctx.from.id}\``, { parse_mo
 bot.command('community', (ctx) => ctx.reply(`👥 Join: ${COMMUNITY_LINK}`));
 bot.command('support', (ctx) => ctx.reply(`💚 *Support:*\nZenith Bank\n4268186069\nJoshua Giwa`, { parse_mode: 'Markdown' }));
 
-// Check number command
+// ========== CHECK NUMBER COMMAND ==========
 bot.command('checknumber', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 2) {
@@ -292,9 +303,13 @@ bot.command('checknumber', async (ctx) => {
         ? `🚨 *ALERT!*\n${formattedNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money\n❌ Block immediately`
         : `✅ *CLEAR*\n${formattedNumber} has no reports.\n\n⚠️ Still be cautious.`;
     
+    // Add random partner support message
+    const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
+    resultText += `\n\n${supportMessage}`;
+    
     const sponsor = partnerSystem.getCheckSponsorMessage();
     if (sponsor && !reported) {
-        resultText += `\n\n📢 *Sponsored by ${sponsor.businessName}*\n${sponsor.message}`;
+        resultText += `\n\n📢 *Special offer from ${sponsor.businessName}*\n${sponsor.message}`;
     }
     
     const referralResult = referralSystem.addReferralSectionToCheck(resultText, userId, 0);
@@ -318,7 +333,7 @@ bot.command('cn', async (ctx) => {
     await bot.commands.get('checknumber')(ctx);
 });
 
-// Check message command
+// ========== CHECK MESSAGE COMMAND ==========
 bot.command('checkmsg', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 2) {
@@ -348,6 +363,10 @@ bot.command('checkmsg', async (ctx) => {
     
     response += `*✅ WHAT YOU SHOULD DO:*\n${analysis.recommendation}\n\n`;
     
+    // Add random partner support message
+    const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
+    response += `${supportMessage}\n\n`;
+    
     const referralResult = referralSystem.addReferralSectionToCheck(response, userId, analysis.riskScore);
     
     await ctx.reply(referralResult.fullText, {
@@ -369,7 +388,7 @@ bot.command('cm', async (ctx) => {
     await bot.commands.get('checkmsg')(ctx);
 });
 
-// Link check command
+// ========== LINK CHECK COMMAND ==========
 bot.command('checklink', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 2) {
@@ -397,7 +416,7 @@ bot.command('checklink', async (ctx) => {
     await askForTestimonial(ctx, 'link', url);
 });
 
-// Report command
+// ========== REPORT COMMAND ==========
 bot.command('report', async (ctx) => {
     const parts = ctx.message.text.split(' ');
     let phoneNumber = parts[1];
@@ -425,7 +444,7 @@ bot.command('report', async (ctx) => {
     }
 });
 
-// Report link command
+// ========== REPORT LINK COMMAND ==========
 bot.command('reportlink', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 2) {
@@ -447,7 +466,7 @@ bot.command('reportlink', async (ctx) => {
     }
 });
 
-// Plea command
+// ========== PLEA COMMAND ==========
 bot.command('plea', async (ctx) => {
     const args = ctx.message.text.split(' ');
     if (args.length < 2) {
@@ -484,12 +503,12 @@ bot.command('plea', async (ctx) => {
     }
 });
 
-// Referral commands
+// ========== REFERRAL COMMANDS ==========
 bot.command('referral', async (ctx) => { await referralSystem.handleReferralCommand(ctx); });
 bot.command('leaderboard', async (ctx) => { await referralSystem.handleLeaderboardCommand(ctx); });
 bot.command('myreferrals', async (ctx) => { await referralSystem.handleMyReferralsCommand(ctx); });
 
-// Partners commands
+// ========== PARTNERS COMMAND ==========
 bot.command('partners', async (ctx) => {
     try {
         await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK);
@@ -498,6 +517,7 @@ bot.command('partners', async (ctx) => {
     }
 });
 
+// ========== PARTNER COMMAND ==========
 bot.command('partner', (ctx) => {
     ctx.reply(`
 🤝 *PARTNER PROGRAM*
@@ -521,7 +541,7 @@ WhatsApp: 09025839789
     `, { parse_mode: 'Markdown' });
 });
 
-// Education commands
+// ========== EDUCATION COMMANDS ==========
 bot.command('tips', (ctx) => {
     if (dailyTips.length === 0) return ctx.reply('⚠️ No tips yet.');
     const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
@@ -687,7 +707,7 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// ========== API GATEWAY FOR WEBSITE (SAME PORT) ==========
+// ========== API GATEWAY FOR WEBSITE ==========
 const express = require('express');
 const cors = require('cors');
 
@@ -735,14 +755,6 @@ apiApp.post('/api/chat', async (req, res) => {
         console.error('API error:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
-});
-
-// Add this to your API app (before the listen)
-apiApp.get('/', (req, res) => {
-    res.json({ 
-        status: 'ok', 
-        service: 'Detective Jai Bot API'
-    });
 });
 
 // Health check for UptimeRobot
