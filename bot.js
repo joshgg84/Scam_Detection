@@ -4,6 +4,7 @@
 
 const { Telegraf } = require('telegraf');
 const fs = require('fs');
+const path = require('path');
 
 // Import modules
 const partnerSystem = require('./partner.js');
@@ -707,16 +708,29 @@ bot.on('text', async (ctx) => {
     }
 });
 
-// ========== API GATEWAY FOR WEBSITE ==========
+// ========== EXPRESS APP FOR API AND WEBSITE ==========
 const express = require('express');
 const cors = require('cors');
 
-const apiApp = express();
-apiApp.use(cors());
-apiApp.use(express.json());
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Enable CORS for all origins
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type']
+}));
+
+app.use(express.json());
+
+// Serve static website files from /public directory
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ========== API ENDPOINTS ==========
 
 // Main chat endpoint for website
-apiApp.post('/api/chat', async (req, res) => {
+app.post('/api/chat', async (req, res) => {
     const { message, userId } = req.body;
     
     if (!message) {
@@ -758,7 +772,7 @@ apiApp.post('/api/chat', async (req, res) => {
 });
 
 // Health check for UptimeRobot
-apiApp.get('/health', (req, res) => {
+app.get('/health', (req, res) => {
     res.json({ 
         status: 'ok', 
         timestamp: new Date().toISOString(), 
@@ -768,13 +782,18 @@ apiApp.get('/health', (req, res) => {
 });
 
 // Stats endpoint for website
-apiApp.get('/api/stats', (req, res) => {
+app.get('/api/stats', (req, res) => {
     res.json({ scammers: getScammerCount() });
 });
 
 // Simple test endpoint
-apiApp.get('/api/test', (req, res) => {
+app.get('/api/test', (req, res) => {
     res.json({ status: 'ok', message: 'Bot API is online', timestamp: new Date().toISOString() });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 // ========== DAILY TIPS SCHEDULER ==========
@@ -847,14 +866,15 @@ bot.action('copy_bot_link', async (ctx) => {
     await ctx.reply(`✅ *Bot link copied!*\n\nShare: @JoshuaGiwaBot`);
 });
 
-// ========== START API SERVER ==========
-const API_PORT = process.env.PORT || 3000;
-apiApp.listen(API_PORT, () => {
-    console.log(`🔗 API Gateway running on port ${API_PORT}`);
-    console.log(`   POST /api/chat - Chat endpoint for website`);
-    console.log(`   GET  /health - Health check`);
-    console.log(`   GET  /api/stats - Statistics`);
-    console.log(`   GET  /api/test - Test endpoint`);
+// ========== START EXPRESS SERVER ==========
+app.listen(PORT, () => {
+    console.log(`========================================`);
+    console.log(`🌐 Detective Jai API & Website Running!`);
+    console.log(`📍 URL: http://localhost:${PORT}`);
+    console.log(`📡 POST /api/chat - Chat endpoint`);
+    console.log(`📊 GET /health - Health check`);
+    console.log(`📈 GET /api/stats - Statistics`);
+    console.log(`========================================`);
 });
 
 // ========== START LEADERBOARD SCHEDULER ==========
@@ -866,7 +886,7 @@ bot.launch().then(() => {
     console.log('✅ DETECTIVE JAI TELEGRAM BOT IS LIVE!');
     console.log(`📊 ${getScammerCount()} scammers reported`);
     console.log(`🤝 ${partnerSystem.getPartnersCount()} partners`);
-    console.log(`🔗 API Gateway on port ${API_PORT}`);
+    console.log(`🌐 Website available at the same URL`);
     console.log('========================================');
 }).catch(err => { console.error('❌ Launch failed:', err); process.exit(1); });
 
