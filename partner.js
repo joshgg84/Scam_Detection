@@ -141,6 +141,77 @@ function getNextFeaturedPartner() {
     return partner;
 }
 
+// ========== GET RANDOM PARTNER FOR SUPPORT MESSAGE ==========
+function getRandomPartner() {
+    // Filter only active partners (approved and featured)
+    const activePartners = partners.filter(p => p.status === 'approved' && p.featured === true);
+    
+    if (activePartners.length === 0) {
+        return null;
+    }
+    
+    const randomIndex = Math.floor(Math.random() * activePartners.length);
+    const partner = activePartners[randomIndex];
+    
+    return {
+        name: partner.businessName,
+        contact: partner.contact,
+        username: partner.username,
+        phoneNumber: partner.phoneNumber,
+        website: partner.website,
+        category: partner.category,
+        description: partner.description,
+        location: partner.location
+    };
+}
+
+function getRandomPartnerSupportMessage() {
+    const partner = getRandomPartner();
+    if (!partner) {
+        return "🤝 *Support Detective Jai* - Free forever.\n📢 *Advertise with us:* /partner";
+    }
+    
+    // Build contact information string
+    let contactInfo = "";
+    
+    // Telegram contact
+    if (partner.contact && partner.contact.startsWith('@')) {
+        contactInfo += `📱 Telegram: ${partner.contact}\n`;
+    } else if (partner.username && partner.username.startsWith('@')) {
+        contactInfo += `📱 Telegram: ${partner.username}\n`;
+    }
+    
+    // Phone number (clean format)
+    if (partner.phoneNumber) {
+        let phone = partner.phoneNumber.replace(/\+234/, '0');
+        contactInfo += `📞 Phone: ${phone}\n`;
+    }
+    
+    // Website
+    if (partner.website) {
+        contactInfo += `🌐 Website: ${partner.website}\n`;
+    }
+    
+    // Fallback to basic contact
+    if (!contactInfo && partner.contact) {
+        contactInfo += `📞 Contact: ${partner.contact}\n`;
+    }
+    
+    // Publicizing message templates using your exact field names
+    const templates = [
+        `⭐ *FEATURED PARTNER* ⭐\n\n🏪 *${partner.name}*\n📂 ${partner.category ? partner.category.toUpperCase() : 'BUSINESS'}\n📝 ${partner.description || 'Trusted business'}\n\n📞 *Contact them:*\n${contactInfo}📍 ${partner.location || 'Nigeria'}\n\n🤝 *Advertise with us:* /partner`,
+        
+        `📢 *SPOTLIGHT: ${partner.name.toUpperCase()}* 📢\n\n✅ Verified business\n📂 Category: ${partner.category || 'Business'}\n💬 "${partner.description || 'Reliable and trusted'}"\n\n📞 *Reach out:*\n${contactInfo}\n\n⭐ *Become a partner:* /partner`,
+        
+        `🚀 *${partner.name}* supports scam-free Nigeria!\n\n📂 ${partner.category ? partner.category.toUpperCase() : 'BUSINESS'}\n📝 ${partner.description || 'Quality service provider'}\n\n📞 *Connect with them:*\n${contactInfo}\n\n🤝 *Advertise with Detective Jai:* /partner`,
+        
+        `🏪 *OUR TRUSTED PARTNER*\n\n⭐ ${partner.name}\n📂 ${partner.category || 'Business'}\n📌 ${partner.description || 'Serving Nigerians with excellence'}\n\n📞 *Contact:*\n${contactInfo}📍 ${partner.location || 'Remote available'}\n\n✅ Verified by Detective Jai\n\n📢 *Promote your business:* /partner`
+    ];
+    
+    const randomIndex = Math.floor(Math.random() * templates.length);
+    return templates[randomIndex];
+}
+
 // ========== FOR DAILY TIPS - GET SPONSOR MESSAGE ==========
 function getDailyTipSponsorMessage() {
     const premiumSponsors = partners.filter(p => p.tier === 'premium' && p.status === 'approved' && p.featured === true);
@@ -280,6 +351,8 @@ module.exports = {
     getNextFeaturedPartner,
     getDailyTipSponsorMessage,
     getCheckSponsorMessage,
+    getRandomPartner,
+    getRandomPartnerSupportMessage,
     resetFeaturedIndex,
     getPartnerByUserId,
     getPendingByUserId,
