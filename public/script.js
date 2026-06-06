@@ -1,7 +1,7 @@
 // script.js - Detective Jai Web Interface
 // Uses relative path (same domain, no CORS issues)
 
-const BOT_API_URL = '/api/chat';
+const BOT_API_URL = 'https://detective-jai.onrender.com/api/chat';
 const STATS_API_URL = '/api/stats';
 
 // Load stats on page load
