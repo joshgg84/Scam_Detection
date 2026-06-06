@@ -1,16 +1,16 @@
 {
-  "name": "nigeria-scam-detector-bot",
-  "version": "2.0.0",
-  "description": "Telegram bot to detect scams",
+  "name": "detective-jai-bot",
+  "version": "1.0.0",
+  "description": "Detective Jai Telegram Bot",
   "main": "bot.js",
   "scripts": {
-    "start": "node bot.js",
-    "vercel-build": "echo 'Building for Vercel...'"
+    "start": "node bot.js"
   },
   "dependencies": {
     "telegraf": "^4.15.3",
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "node-fetch": "^2.7.0"
+    "node-fetch": "^2.7.0",
+    "tesseract.js": "^5.0.5"
   }
 }
