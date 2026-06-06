@@ -181,6 +181,25 @@ function analyzeMessage(text) {
         }
     }
     
+    // ========== CHECK FOR AMOUNTS (Money requests without "send money") ==========
+    const amountMatch = text.match(/[\d,]+/g);
+    if (amountMatch) {
+        for (const amount of amountMatch) {
+            const cleanAmount = amount.replace(/,/g, '');
+            const amountNum = parseInt(cleanAmount);
+            if (amountNum && amountNum >= 1000) {
+                // Check if message contains both an amount AND a request word
+                const requestWords = ['send', 'pay', 'deposit', 'transfer', 'send to', 'pay to', 'send me', 'pay me'];
+                const hasRequest = requestWords.some(word => lowerText.includes(word));
+                if (hasRequest) {
+                    alerts.push(`💰 Money request detected: ${amount} → Scammers often ask for specific amounts to pressure you.`);
+                    riskScore += 15;
+                    break;
+                }
+            }
+        }
+    }
+    
     // ========== CHECK FOR LINKS ==========
     if (lowerText.includes('http://') || lowerText.includes('https://')) {
         alerts.push(`🔗 Link detected → Could be phishing. DO NOT click suspicious links.`);
@@ -197,13 +216,19 @@ function analyzeMessage(text) {
     });
     
     // ========== CHECK FOR MONEY REQUESTS ==========
-    const moneyPhrases = ['send money', 'transfer money', 'deposit', 'wire transfer', 'western union'];
+    const moneyPhrases = ['send money', 'transfer money', 'deposit', 'wire transfer', 'western union', 'send me', 'pay me', 'pay to', 'send to'];
     moneyPhrases.forEach(phrase => {
         if (lowerText.includes(phrase)) {
             alerts.push(`💰 Direct money request → Legitimate contacts don't ask for money via unsolicited messages.`);
             riskScore += 20;
         }
     });
+    
+    // ========== CHECK FOR "VERIFY" + "PAYMENT" combination ==========
+    if (lowerText.includes('verify') && (lowerText.includes('payment') || lowerText.includes('pay'))) {
+        alerts.push(`⚠️ "VERIFY" + "PAYMENT" combination → Scammers often ask for "verification payments" that don't exist.`);
+        riskScore += 25;
+    }
     
     // ========== DETERMINE RISK LEVEL ==========
     let riskLevel, emoji, recommendation;
@@ -280,7 +305,7 @@ async function analyzeMessageWithLinks(text, linkModule) {
 const redFlagsContent = `🚩 *SCAM RED FLAGS*
 
 URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
-MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN"
+MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN", "PAY", "DEPOSIT"
 INFO: "PIN", "OTP", "BVN", "CVV"
 FAKE: "WINNING", "LOTTERY", "PRINCE"
 INVESTMENT: "DOUBLE YOUR MONEY", "GUARANTEED RETURNS", "RISK FREE"
