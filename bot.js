@@ -6,6 +6,7 @@ const { Telegraf } = require('telegraf');
 const partnerSystem = require('./partner.js');
 const referralSystem = require('./referrals.js');
 const handlers = require('./handlers.js');
+const detection = require('./detection.js');  // ← ADD THIS
 const { registerAdminCommands } = require('./admin.js');
 const { getScammerCount, reportNumber, submitPlea } = require('./scammers.js');
 const { dailyTips } = require('./tips.js');
