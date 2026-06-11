@@ -101,7 +101,13 @@ function analyzeMessage(text) {
         { phrase: 'build your downline', points: 15, explanation: 'Pyramid schemes focus on building downlines, not selling products.' },
         { phrase: 'binary plan', points: 15, explanation: 'Binary compensation plans are common in scam MLMs.' },
         { phrase: 'matrix plan', points: 15, explanation: 'Matrix plans are often pyramid schemes in disguise.' },
-        { phrase: 'unilevel plan', points: 10, explanation: 'Be cautious of MLM compensation plans.' },
+        { phrase: 'unilevel plan', points: 10, explanation: 'Be cautious of MLM compensation plans.' }, { phrase: 'army', points: 20, explanation: 'Scammers pretend to be military to seem trustworthy.' },
+{ phrase: 'million dollars', points: 25, explanation: 'Large money promises are classic scam tactics.' }, { phrase: 'million naira', points: 25, explanation: 'Large money promises are classic scam tactics.' }, { phrase: 'usd', points: 10, explanation: 'Scammers often promise foreign currency.' },
+{ phrase: 'move money', points: 20, explanation: 'Scammers need help "moving" money from overseas.' },
+{ phrase: 'military officer', points: 20, explanation: 'Fake military romance scam.' },
+{ phrase: 'syria', points: 15, explanation: 'Common location for romance scammers.' },
+{ phrase: 'receive money', points: 20, explanation: 'They want to use your bank account.' },
+{ phrase: '40%', points: 15, explanation: 'Scammers promise large percentages to lure you.' },
         
         // Crypto scam phrases
         { phrase: 'cloud mining', points: 20, explanation: 'Cloud mining is often a scam. Most legitimate mining requires equipment.' },
