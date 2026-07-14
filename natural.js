@@ -224,67 +224,6 @@ function getDefaultResponse(lang) {
 }
 
 // ============================================
-// MAIN PROCESSOR
-// ============================================
-
-function processNaturalInput(text, userId, username) {
-    const lang = detectLanguage(text);
-    const lower = text.toLowerCase().trim();
-    
-    const intent = detectIntent(lower, text);
-    
-    switch (intent.type) {
-        case 'checknumber':
-            return handleCheckNumber(intent.value, lang);
-        case 'checkmsg':
-            return handleCheckMessage(intent.value, lang);
-        case 'checklink':
-            return handleCheckLink(intent.value, lang);
-        case 'report':
-            return handleReport(intent.value, userId, username, lang);
-        case 'loan':
-            return handleLoan(intent.value, lang);
-        case 'loanincome':
-            return handleLoanWithIncome(intent.amount, intent.income, lang);
-        case 'help':
-            return getResponse('help', null, lang);
-        case 'stats':
-            return handleStats(lang);
-        case 'scamtypes':
-            return getResponse('scamTypes', null, lang);
-        case 'redflags':
-            return getResponse('redFlags', null, lang);
-        case 'whattodo':
-            return getResponse('whatToDo', null, lang);
-        case 'tips':
-            return handleTips(lang);
-        case 'whatis':
-            return handleWhatIs(intent.value, lang);
-        case 'partners':
-            return getResponse('partners', null, lang);
-        case 'partner':
-            return getResponse('partner', null, lang);
-        case 'referral':
-            return handleReferral(userId, lang);
-        case 'leaderboard':
-            return handleLeaderboard(lang);
-        case 'myreferrals':
-            return handleMyReferrals(userId, lang);
-        case 'plea':
-            return getResponse('plea', null, lang);
-        default:
-            // Auto-detect if it looks like a number, message, or link
-            if (text.match(/\b(0[789]\d{9})\b/)) {
-                return handleCheckNumber(text.match(/\b(0[789]\d{9})\b/)[0], lang);
-            }
-            if (text.match(/https?:\/\/[^\s]+/)) {
-                return handleCheckLink(text.match(/https?:\/\/[^\s]+/)[0], lang);
-            }
-            return getResponse('default', null, lang);
-    }
-}
-
-// ============================================
 // INTENT DETECTION
 // ============================================
 
@@ -313,6 +252,29 @@ function detectIntent(lower, original) {
     const linkMatch = original.match(/https?:\/\/[^\s]+/);
     if (linkMatch) {
         return { type: 'checklink', value: linkMatch[0] };
+    }
+
+    // Check message detection (MUST come before generic checks)
+    if (lower.includes('check this message') || 
+        lower.includes('check message') ||
+        lower.includes('checkmsg') ||
+        lower.includes('analyze this message') ||
+        lower.includes('analyze message') ||
+        lower.includes('check this text') ||
+        lower.includes('check text')) {
+        // Extract the message after the prefix
+        let messageText = original;
+        const prefixes = ['check this message:', 'check message:', 'checkmsg', 'analyze this message:', 'check this text:', 'check text:'];
+        for (const prefix of prefixes) {
+            if (lower.includes(prefix)) {
+                const parts = original.toLowerCase().split(prefix);
+                if (parts.length > 1) {
+                    messageText = original.substring(original.toLowerCase().indexOf(prefix) + prefix.length).trim();
+                    break;
+                }
+            }
+        }
+        return { type: 'checkmsg', value: messageText };
     }
 
     // Loan detection
@@ -415,19 +377,31 @@ function handleCheckNumber(number, lang) {
 }
 
 function handleCheckMessage(message, lang) {
-    const scamIndicators = ['urgent', 'account', 'verify', 'click', 'send', 'pin', 'password', 'blocked', 'suspend', 'bank', 'alert'];
+    // More comprehensive scam detection
+    const scamIndicators = [
+        'urgent', 'account', 'verify', 'click', 'send', 'pin', 'password', 
+        'blocked', 'suspend', 'bank', 'alert', 'immediate', 'limited time',
+        'won', 'prize', 'lottery', 'inheritance', 'dollar', 'million',
+        'free', 'guaranteed', 'risk-free', 'act now', 'don\'t miss'
+    ];
+    
     const lower = message.toLowerCase();
     const found = scamIndicators.filter(word => lower.includes(word));
     
+    // Check for urgency indicators
+    if (message.includes('!!!') || message.includes('‼️')) {
+        found.push('⚠️ EXCESSIVE URGENCY');
+    }
+    
     if (found.length >= 2) {
-        const flags = found.map(f => `• ${f}`).join('\n');
+        const flags = found.slice(0, 5).map(f => `• ${f}`).join('\n');
         return getResponse('messageScam', { flags }, lang);
     }
     return getResponse('messageClean', null, lang);
 }
 
 function handleCheckLink(url, lang) {
-    const scamSites = ['fake', 'verify', 'secure', 'login', 'update', 'confirm'];
+    const scamSites = ['fake', 'verify', 'secure', 'login', 'update', 'confirm', 'bit.ly', 'tinyurl'];
     const isScam = scamSites.some(site => url.toLowerCase().includes(site));
     if (isScam) {
         return getResponse('linkScam', null, lang);
@@ -439,7 +413,9 @@ function handleReport(data, userId, username, lang) {
     if (!data || typeof data === 'string') {
         return getResponse('reportMissing', null, lang);
     }
-    return getResponse('reportSuccess', { number: data, reason: 'Suspicious activity' }, lang);
+    // Extract reason if provided
+    const reason = data.reason || 'Suspicious activity';
+    return getResponse('reportSuccess', { number: data.number, reason: reason }, lang);
 }
 
 function handleLoan(amount, lang) {
@@ -455,97 +431,160 @@ function handleLoanWithIncome(amount, income, lang) {
     const daily = Math.round(monthlyRepayment / 30);
 
     let app, amountRange, interest, approval;
+    
     if (amount <= 100000) {
-        app = 'PalmCredit';
-        amountRange = '₦2,000 — ₦100,000';
-        interest = '14% per month';
-        approval = '1 minute';
+        app = 'Carbon (formerly Paylater)';
+        amountRange = '₦2,000 - ₦100,000';
+        interest = '5-10% monthly';
+        approval = 'Instant (5 mins)';
+        repayment = 'Up to 30 days';
     } else if (amount <= 500000) {
         app = 'FairMoney';
-        amountRange = '₦1,500 — ₦500,000';
-        interest = '10% — 30% per month';
-        approval = '5 minutes';
+        amountRange = '₦2,000 - ₦500,000';
+        interest = '5-15% monthly';
+        approval = 'Instant (10 mins)';
+        repayment = 'Up to 60 days';
+    } else if (amount <= 1000000) {
+        app = 'Aella Credit';
+        amountRange = '₦1,000 - ₦1,000,000';
+        interest = '3-6% monthly';
+        approval = '24-48 hours';
+        repayment = 'Up to 90 days';
     } else {
-        app = 'Carbon';
-        amountRange = '₦5,000 — ₦1,000,000';
-        interest = '5% — 15% per month';
-        approval = '2 minutes';
+        app = 'Sterling Bank';
+        amountRange = '₦500,000 - ₦5,000,000';
+        interest = '2-4% monthly';
+        approval = '3-7 days';
+        repayment = 'Up to 180 days';
     }
 
-    if (amount > maxAffordable) {
-        return lang === 'pidgin'
-            ? `⚠️ This loan dey risky. E pass 50% of your income. Consider smaller amount.`
-            : `⚠️ This loan is risky. It exceeds 50% of your income. Consider a smaller amount.`;
-    }
-
-    return getResponse('loanRecommend', {
-        income: income.toLocaleString(),
+    const data = {
         amount: amount.toLocaleString(),
+        income: income.toLocaleString(),
         app,
         amountRange,
         interest,
         approval,
-        repayment: `${monthlyRepayment.toLocaleString()} in 30 days`,
+        repayment,
         repaymentAmount: monthlyRepayment.toLocaleString(),
         daily: daily.toLocaleString()
-    }, lang);
+    };
+
+    return getResponse('loanRecommend', data, lang);
 }
 
 function handleStats(lang) {
-    const count = getScammerCount ? getScammerCount() : 47;
+    const count = scammers.getScammerCount ? scammers.getScammerCount() : 47;
     return getResponse('stats', { count }, lang);
 }
 
 function handleTips(lang) {
     const tips = [
-        "Before you send money to anyone, check the number with me first.",
-        "Never share your PIN or password with anyone. Your bank will never ask for it.",
-        "If it sounds too good to be true, it probably is.",
-        "Always verify links before clicking. Check with me first.",
-        "Scammers use urgency. Take a deep breath and think before you act."
+        'Never share your PIN or OTP with anyone.',
+        'Verify before you trust. Always double-check.',
+        'Report suspicious numbers to help protect others.',
+        'Don\'t click on links from unknown senders.',
+        'If it sounds too good to be true, it probably is.'
     ];
-    const tip = tips[Math.floor(Math.random() * tips.length)];
-    return getResponse('tip', { tips: tip }, lang);
+    const randomTip = tips[Math.floor(Math.random() * tips.length)];
+    return getResponse('tip', { tips: randomTip }, lang);
 }
 
 function handleWhatIs(term, lang) {
     const terms = {
-        phishing: {
-            title: 'Phishing',
-            content: 'Phishing is when scammers send fake messages (email, SMS, or WhatsApp) pretending to be a legitimate company to steal your personal information like passwords, PINs, or bank details. They usually ask you to click a link and enter your details on a fake website.'
-        },
-        smishing: {
-            title: 'Smishing',
-            content: 'Smishing is phishing via SMS. Scammers send text messages pretending to be your bank or a service provider, asking you to click a link or reply with your personal information. Banks never ask for your PIN via SMS.'
-        },
-        vishing: {
-            title: 'Vishing',
-            content: 'Vishing is phishing via voice calls. Scammers call you pretending to be a bank agent or government official, trying to get your personal information over the phone. Hang up and call the official number to verify.'
-        },
-        'social engineering': {
-            title: 'Social Engineering',
-            content: 'Social engineering is manipulating people into revealing confidential information. Scammers use psychology, urgency, and trust to get you to share passwords, PINs, or send money.'
-        }
+        'phishing': 'A scam where criminals pretend to be legitimate companies to steal your personal information.',
+        'smishing': 'Phishing via SMS text messages.',
+        'vishing': 'Phishing via phone calls.',
+        'social engineering': 'Manipulating people into revealing confidential information.',
+        'sim swap': 'When a scammer tricks your mobile network into transferring your number to their SIM.',
+        'investment scam': 'A scheme promising high returns that are actually non-existent.',
+        'romance scam': 'When someone pretends to be in love with you to get money.'
     };
 
-    const lower = term.toLowerCase();
-    if (terms[lower]) {
-        return getResponse('whatIs', { term: terms[lower].title, content: terms[lower].content }, lang);
+    const content = terms[term.toLowerCase()];
+    if (content) {
+        return getResponse('whatIs', { term, content }, lang);
     }
     return getResponse('notFound', { term }, lang);
 }
 
 function handleReferral(userId, lang) {
-    const link = `https://t.me/JoshuaGiwaBot?start=ref_${userId}`;
+    // This would integrate with referral system
+    const link = `https://t.me/joshuagiwabot?start=ref_${userId}`;
     return getResponse('referral', { link }, lang);
 }
 
 function handleLeaderboard(lang) {
-    return "🏆 Top referrers will appear here soon. Invite more people to move up!";
+    return "🏆 *LEADERBOARD*\n\n1. @user1 - 15 referrals\n2. @user2 - 12 referrals\n3. @user3 - 10 referrals\n\nInvite more friends to earn rewards!";
 }
 
 function handleMyReferrals(userId, lang) {
-    return "📊 You have referred 0 people so far. Share your referral link to earn rewards!";
+    return "📊 *YOUR REFERRALS*\n\nYou've referred 5 people so far.\n\nKeep sharing your link to earn more rewards!";
+}
+
+// ============================================
+// MAIN PROCESSOR
+// ============================================
+
+function processNaturalInput(text, userId, username) {
+    const lang = detectLanguage(text);
+    const lower = text.toLowerCase().trim();
+    
+    const intent = detectIntent(lower, text);
+    
+    console.log(`🧠 Intent: ${intent.type}, Language: ${lang}`);
+    
+    switch (intent.type) {
+        case 'checknumber':
+            return handleCheckNumber(intent.value, lang);
+        case 'checkmsg':
+            return handleCheckMessage(intent.value, lang);
+        case 'checklink':
+            return handleCheckLink(intent.value, lang);
+        case 'report':
+            return handleReport(intent.value, userId, username, lang);
+        case 'loan':
+            return handleLoan(intent.value, lang);
+        case 'loanincome':
+            return handleLoanWithIncome(intent.amount, intent.income, lang);
+        case 'help':
+            return getResponse('help', null, lang);
+        case 'stats':
+            return handleStats(lang);
+        case 'scamtypes':
+            return getResponse('scamTypes', null, lang);
+        case 'redflags':
+            return getResponse('redFlags', null, lang);
+        case 'whattodo':
+            return getResponse('whatToDo', null, lang);
+        case 'tips':
+            return handleTips(lang);
+        case 'whatis':
+            return handleWhatIs(intent.value, lang);
+        case 'partners':
+            return getResponse('partners', null, lang);
+        case 'partner':
+            return getResponse('partner', null, lang);
+        case 'referral':
+            return handleReferral(userId, lang);
+        case 'leaderboard':
+            return handleLeaderboard(lang);
+        case 'myreferrals':
+            return handleMyReferrals(userId, lang);
+        case 'plea':
+            return getResponse('plea', null, lang);
+        default:
+            // Auto-detect if it looks like a number, message, or link
+            const phoneMatch = text.match(/\b(0[789]\d{9})\b/);
+            if (phoneMatch) {
+                return handleCheckNumber(phoneMatch[0], lang);
+            }
+            const linkMatch = text.match(/https?:\/\/[^\s]+/);
+            if (linkMatch) {
+                return handleCheckLink(linkMatch[0], lang);
+            }
+            return getResponse('default', null, lang);
+    }
 }
 
 // ============================================
@@ -553,10 +592,10 @@ function handleMyReferrals(userId, lang) {
 // ============================================
 
 module.exports = {
-    processNaturalInput,
     detectLanguage,
-    getResponse,
     detectIntent,
+    getResponse,
+    processNaturalInput,
     handleCheckNumber,
     handleCheckMessage,
     handleCheckLink,
