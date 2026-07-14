@@ -1,4 +1,5 @@
 // bot.js - Telegram Bot + Express API
+// Now supports natural language, Pidgin, and human-friendly responses
 
 const { Telegraf } = require('telegraf');
 const express = require('express');
@@ -14,6 +15,7 @@ const { dailyTips } = require('./tips.js');
 const linkModule = require('./links.js');
 const ocr = require('./ocr.js');
 const handlers = require('./handlers.js');
+const natural = require('./natural.js');
 
 // ========== TELEGRAM BOT CONFIGURATION ==========
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -45,7 +47,8 @@ app.post('/api/chat', async (req, res) => {
     console.log(`📨 API: ${message.substring(0, 50)}...`);
     
     try {
-        const response = await handlers.processCommand(message, userId || 'web_user');
+        // Use natural language processor for API too
+        const response = natural.processNaturalInput(message, userId || 'web_user', 'web_user');
         res.json({ success: true, response: response });
     } catch (err) {
         console.error('API error:', err);
@@ -78,7 +81,8 @@ const validCommands = [
     'addtrusted', 'removetrusted', 'listtrusted',
     'pending', 'verify', 'reject', 'userstats', 'userreports',
     'pleas', 'approveplea', 'rejectplea', 'allpleas',
-    'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats'
+    'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats',
+    'loan'
 ];
 
 bot.use((ctx, next) => {
@@ -94,24 +98,33 @@ bot.use((ctx, next) => {
     return next();
 });
 
+// ========== HELP MESSAGE ==========
 function getHelpMessage() {
     return `
 📚 *DETECTIVE JAI - HELP*
+
+*Commands (or just talk naturally)*
 
 📞 /checknumber 08012345678 - Check a phone number
 📝 /checkmsg [message] - Analyze a suspicious message
 🔗 /checklink [url] - Check if a link is a scam
 📢 /report [number] [reason] - Report a scammer
-🔍 /search [digits] - Search scammer database
+💰 /loan [amount] [income] - Get loan advice
 📊 /stats - Bot statistics
 🤝 /referral - Get your referral link
 🏆 /leaderboard - Top inviters
+
+*Or just talk to me naturally:*
+"Check this number: 080..."
+"I need a loan of ₦50,000"
+"Is this link safe? https://..."
 
 👥 Community: ${COMMUNITY_LINK}
 🇳🇬 Stay safe. Verify first.
     `;
 }
 
+// ========== TESTIMONIAL ==========
 async function askForTestimonial(ctx, type, details) {
     const userId = ctx.from.id;
     awaitingTestimonial[userId] = { type, details };
@@ -119,7 +132,9 @@ async function askForTestimonial(ctx, type, details) {
     await ctx.reply("🤝 *Was this helpful?*", { parse_mode: 'Markdown', reply_markup: buttons });
 }
 
-// Basic commands
+// ========== COMMAND HANDLERS ==========
+
+// Start
 bot.start(async (ctx) => {
     const args = ctx.message.text.split(' ');
     const startParam = args[1];
@@ -132,12 +147,20 @@ bot.start(async (ctx) => {
         await referralSystem.handleReferralCommand(ctx);
         return;
     }
-    ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' });
+    const lang = natural.detectLanguage(ctx.message.text);
+    ctx.reply(natural.getResponse('welcome', null, lang), { parse_mode: 'Markdown' });
 });
 
+// Help
 bot.command('help', (ctx) => ctx.reply(getHelpMessage(), { parse_mode: 'Markdown' }));
+
+// My ID
 bot.command('myid', (ctx) => ctx.reply(`Your ID: \`${ctx.from.id}\``, { parse_mode: 'Markdown' }));
+
+// Community
 bot.command('community', (ctx) => ctx.reply(`👥 Join: ${COMMUNITY_LINK}`));
+
+// Support
 bot.command('support', (ctx) => ctx.reply(`💚 *Support:* Zenith Bank\n4268186069\nJoshua Giwa`, { parse_mode: 'Markdown' }));
 
 // Check number
@@ -145,10 +168,13 @@ bot.command('checknumber', async (ctx) => {
     const args = ctx.message.text.split(' ');
     const phoneNumber = args[1];
     const userId = ctx.from.id;
-    const response = await handlers.handleCheckNumber(phoneNumber);
-    const referralResult = referralSystem.addReferralSectionToCheck(response, userId, 0);
-    await ctx.reply(referralResult.fullText, { parse_mode: 'Markdown', reply_markup: referralResult.buttons });
-    await askForTestimonial(ctx, 'phone', phoneNumber || 'unknown');
+    if (!phoneNumber) {
+        return ctx.reply("📞 *Check Number*\n\nSend me a number like this:\n/checknumber 08012345678\n\nOr just say: 'Check this number: 08012345678'");
+    }
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.handleCheckNumber(phoneNumber, lang);
+    await ctx.reply(response, { parse_mode: 'Markdown' });
+    await askForTestimonial(ctx, 'phone', phoneNumber);
 });
 bot.command('cn', async (ctx) => {
     const args = ctx.message.text.split(' ');
@@ -161,10 +187,12 @@ bot.command('cn', async (ctx) => {
 bot.command('checkmsg', async (ctx) => {
     const args = ctx.message.text.split(' ');
     const input = args.slice(1).join(' ');
-    const userId = ctx.from.id;
-    const response = await handlers.handleCheckMessage(input);
-    const referralResult = referralSystem.addReferralSectionToCheck(response, userId, 0);
-    await ctx.reply(referralResult.fullText, { parse_mode: 'Markdown', reply_markup: referralResult.buttons });
+    if (!input) {
+        return ctx.reply("📝 *Check Message*\n\nSend me a message like this:\n/checkmsg Urgent: Your account will be closed\n\nOr just say: 'Check this message: ...'");
+    }
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.handleCheckMessage(input, lang);
+    await ctx.reply(response, { parse_mode: 'Markdown' });
     await askForTestimonial(ctx, 'message', input.substring(0, 50));
 });
 bot.command('cm', async (ctx) => {
@@ -178,9 +206,13 @@ bot.command('cm', async (ctx) => {
 bot.command('checklink', async (ctx) => {
     const args = ctx.message.text.split(' ');
     const url = args[1];
-    const response = await handlers.handleCheckLink(url);
+    if (!url) {
+        return ctx.reply("🔗 *Check Link*\n\nSend me a link like this:\n/checklink https://example.com\n\nOr just say: 'Is this link safe? https://...'");
+    }
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.handleCheckLink(url, lang);
     await ctx.reply(response, { parse_mode: 'Markdown' });
-    await askForTestimonial(ctx, 'link', url || 'unknown');
+    await askForTestimonial(ctx, 'link', url);
 });
 
 // Report
@@ -190,27 +222,104 @@ bot.command('report', async (ctx) => {
     const reason = parts.slice(2).join(' ') || 'Suspicious activity';
     const userId = ctx.from.id;
     const username = ctx.from.username || ctx.from.first_name;
-    const result = await handlers.handleReport(phoneNumber, reason, userId);
-    ctx.reply(`✅ *REPORTED*\n${phoneNumber}\n${result}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-    if (result.includes('VERIFIED')) {
-        await bot.telegram.sendMessage(YOUR_ID, `🚨 *NUMBER VERIFIED AS SCAMMER*\n📞 ${phoneNumber}\n👤 Reported by: @${username}`);
+    if (!phoneNumber) {
+        return ctx.reply("📢 *Report Scammer*\n\nSend me a number like this:\n/report 08012345678 loan scam\n\nOr just say: 'I want to report 080... for scam'");
+    }
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.getResponse('reportSuccess', { number: phoneNumber, reason: reason }, lang);
+    await ctx.reply(response, { parse_mode: 'Markdown' });
+    await bot.telegram.sendMessage(YOUR_ID, `🚨 *NUMBER REPORTED*\n📞 ${phoneNumber}\n👤 Reported by: @${username}\n📌 Reason: ${reason}`);
+});
+
+// Loan
+bot.command('loan', async (ctx) => {
+    const args = ctx.message.text.split(' ');
+    const amount = parseInt(args[1]);
+    const income = parseInt(args[2]);
+    const lang = natural.detectLanguage(ctx.message.text);
+
+    if (!amount) {
+        return ctx.reply(natural.getResponse('loanAskAmount', null, lang), { parse_mode: 'Markdown' });
+    }
+
+    if (!income) {
+        return ctx.reply(natural.getResponse('loanAskIncome', { amount: amount.toLocaleString() }, lang), { parse_mode: 'Markdown' });
+    }
+
+    const response = natural.handleLoanWithIncome(amount, income, lang);
+    await ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// Stats
+bot.command('stats', (ctx) => {
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.handleStats(lang);
+    ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// Scam types
+bot.command('scamtypes', (ctx) => {
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.getResponse('scamTypes', null, lang);
+    ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// Red flags
+bot.command('redflags', (ctx) => {
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.getResponse('redFlags', null, lang);
+    ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// What to do
+bot.command('whattodo', (ctx) => {
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.getResponse('whatToDo', null, lang);
+    ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// Tips
+bot.command('tips', (ctx) => {
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.handleTips(lang);
+    ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// What is
+bot.command('whatis', (ctx) => {
+    const term = ctx.message.text.split(' ').slice(1).join(' ');
+    const lang = natural.detectLanguage(ctx.message.text);
+    if (!term) {
+        return ctx.reply("📖 *What Is...*\n\nTell me what you want to know: /whatis phishing\n\nOr just say: 'What is phishing?'");
+    }
+    const response = natural.handleWhatIs(term, lang);
+    ctx.reply(response, { parse_mode: 'Markdown' });
+});
+
+// Partners
+bot.command('partners', async (ctx) => {
+    try { 
+        await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK); 
+    } catch (err) { 
+        ctx.reply(`🤝 *PARTNERS DIRECTORY*\n\nNo partners yet. Be the first!\nContact @JoshuaGiwa\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' }); 
     }
 });
 
-// Report link
-bot.command('reportlink', async (ctx) => {
-    const args = ctx.message.text.split(' ');
-    const url = args[1];
-    const reason = args.slice(2).join(' ') || 'Suspicious link';
-    const reporter = ctx.from.username || ctx.from.id.toString();
-    const result = linkModule.reportLink(url, reason, reporter);
-    if (result.success) {
-        ctx.reply(`✅ *LINK REPORTED!*\n\nURL: \`${url}\`\nReason: ${reason}\nTotal: ${result.total}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-        await bot.telegram.sendMessage(YOUR_ID, `🔗 *NEW SCAM LINK REPORTED*\nURL: ${url}\nReason: ${reason}\nReported by: @${ctx.from.username || reporter}`);
-    } else {
-        ctx.reply(`⚠️ *Link already reported*\n\nURL: \`${url}\`\nReason: ${result.existing.reason}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-    }
+// Partner program
+bot.command('partner', (ctx) => {
+    const lang = natural.detectLanguage(ctx.message.text);
+    const response = natural.getResponse('partner', null, lang);
+    ctx.reply(response, { parse_mode: 'Markdown' });
 });
+
+// Referral
+bot.command('referral', async (ctx) => { await referralSystem.handleReferralCommand(ctx); });
+
+// Leaderboard
+bot.command('leaderboard', async (ctx) => { await referralSystem.handleLeaderboardCommand(ctx); });
+
+// My referrals
+bot.command('myreferrals', async (ctx) => { await referralSystem.handleMyReferralsCommand(ctx); });
 
 // Plea
 bot.command('plea', async (ctx) => {
@@ -229,52 +338,10 @@ bot.command('plea', async (ctx) => {
     }
 });
 
-// Referral
-bot.command('referral', async (ctx) => { await referralSystem.handleReferralCommand(ctx); });
-bot.command('leaderboard', async (ctx) => { await referralSystem.handleLeaderboardCommand(ctx); });
-bot.command('myreferrals', async (ctx) => { await referralSystem.handleMyReferralsCommand(ctx); });
-
-// Partners
-bot.command('partners', async (ctx) => {
-    try { await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK); } 
-    catch (err) { ctx.reply(`🤝 *PARTNERS DIRECTORY*\n\nNo partners yet. Be the first!\nContact @JoshuaGiwa\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' }); }
-});
-bot.command('partner', (ctx) => {
-    ctx.reply(`🤝 *PARTNER PROGRAM*\n\n*Standard* - ₦11,000/month\n*Premium* - ₦17,000/month\n\nRegister: Contact @JoshuaGiwa\nWhatsApp: 09025839789\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-});
-
-// Education
-bot.command('tips', (ctx) => {
-    if (dailyTips.length === 0) return ctx.reply('⚠️ No tips yet.');
-    ctx.reply(`${dailyTips[Math.floor(Math.random() * dailyTips.length)]}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-});
-bot.command('scamtypes', (ctx) => {
-    const commonScams = detection.getCommonScams();
-    if (commonScams.length === 0) return ctx.reply('No scam terms loaded.');
-    let message = `📚 *COMMON SCAMS*\n\n`;
-    for (const key of commonScams.slice(0, 8)) {
-        const term = detection.scamTerms[key];
-        if (term) message += `${term.title}\n   ${(term.content || term).split('.')[0]}.\n\n`;
-    }
-    ctx.reply(message + `👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-});
-bot.command('redflags', (ctx) => ctx.reply(detection.redFlagsContent, { parse_mode: 'Markdown' }));
-bot.command('whattodo', (ctx) => ctx.reply(detection.whatToDoContent, { parse_mode: 'Markdown' }));
-bot.command('whatis', (ctx) => {
-    const term = ctx.message.text.split(' ').slice(1).join(' ').toLowerCase();
-    if (!term) return ctx.reply(`📖 Usage: /whatis phishing\n\nAvailable: ${detection.getAllTermKeys().slice(0, 15).join(', ')}`);
-    const data = detection.getTerm(term);
-    if (data) ctx.reply(`${data.title}\n\n${data.content}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-    else ctx.reply(`❌ "${term}" not found. Try: ${detection.getAllTermKeys().slice(0, 10).join(', ')}`);
-});
-bot.command('stats', (ctx) => {
-    ctx.reply(`📊 *STATS*\nScammers: ${getScammerCount()}\nPartners: ${partnerSystem.getPartnersCount()}\nTips: ${dailyTips.length}\nTerms: ${Object.keys(detection.scamTerms).length}`, { parse_mode: 'Markdown' });
-});
-
 // Admin commands
 registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, detection.scamTerms, linkModule);
 
-// Media handlers
+// ========== MEDIA HANDLERS ==========
 bot.on('photo', async (ctx) => {
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
     const file = await ctx.telegram.getFile(photo.file_id);
@@ -285,10 +352,12 @@ bot.on('photo', async (ctx) => {
         await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, ocr.getLowQualityHelpMessage(), { parse_mode: 'Markdown' });
         return;
     }
-    const response = await handlers.handleCheckMessage(extractedText);
+    const lang = natural.detectLanguage(extractedText);
+    const response = natural.handleCheckMessage(extractedText, lang);
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     await askForTestimonial(ctx, 'image', extractedText.substring(0, 50));
 });
+
 bot.on('document', async (ctx) => {
     const document = ctx.message.document;
     const mimeType = document.mime_type;
@@ -304,16 +373,21 @@ bot.on('document', async (ctx) => {
         await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, ocr.getLowQualityHelpMessage(), { parse_mode: 'Markdown' });
         return;
     }
-    const response = await handlers.handleCheckMessage(extractedText);
+    const lang = natural.detectLanguage(extractedText);
+    const response = natural.handleCheckMessage(extractedText, lang);
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     await askForTestimonial(ctx, 'file', extractedText.substring(0, 50));
 });
 
-// Text handler
+// ========== NATURAL LANGUAGE TEXT HANDLER ==========
 bot.on('text', async (ctx) => {
     const userId = ctx.from.id;
     const message = ctx.message.text;
+    
+    // Skip commands (they are handled above)
     if (message.startsWith('/')) return;
+    
+    // Check for testimonial
     if (awaitingTestimonial[userId] && awaitingTestimonial[userId].ready) {
         const testimonial = message.trim();
         const data = awaitingTestimonial[userId];
@@ -322,24 +396,36 @@ bot.on('text', async (ctx) => {
         delete awaitingTestimonial[userId];
         return;
     }
-    const response = await handlers.handleAutoDetect(message);
-    if (response && (!response.includes('No obvious scam indicators') || response.includes('RISK'))) {
+    
+    // Process natural language
+    const username = ctx.from.username || ctx.from.first_name;
+    const response = natural.processNaturalInput(message, userId, username);
+    
+    // Only reply if there's a meaningful response
+    if (response && !response.includes('I don\'t understand')) {
         await ctx.reply(response, { parse_mode: 'Markdown' });
-        await askForTestimonial(ctx, 'auto_message', message.substring(0, 50));
+        
+        // Ask for testimonial if it was a check
+        const lower = message.toLowerCase();
+        if (lower.includes('check') || lower.includes('number') || lower.includes('link')) {
+            await askForTestimonial(ctx, 'natural', message.substring(0, 50));
+        }
     }
 });
 
-// Callbacks
+// ========== CALLBACKS ==========
 bot.action('give_testimonial', async (ctx) => {
     const userId = ctx.from.id;
     awaitingTestimonial[userId] = { ...awaitingTestimonial[userId], username: ctx.from.username || ctx.from.first_name, ready: true };
     await ctx.answerCbQuery("Great! Send your testimonial now.");
     await ctx.reply("📝 *Please send your testimonial now* (2-3 sentences)");
 });
+
 bot.action('no_testimonial', async (ctx) => {
     delete awaitingTestimonial[ctx.from.id];
     await ctx.answerCbQuery("Thanks for your honesty!");
 });
+
 bot.action(/copy_ref_\d+/, async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
 bot.action('copy_group', async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
 bot.action('show_leaderboard', async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
@@ -354,7 +440,7 @@ bot.action('copy_bot_link', async (ctx) => {
     await ctx.reply(`✅ @JoshuaGiwaBot`);
 });
 
-// Daily tips
+// ========== DAILY TIPS ==========
 let lastTipDate = null;
 async function sendDailyTipToGroup() {
     if (dailyTips.length === 0) return;
@@ -374,18 +460,21 @@ async function sendDailyTipToGroup() {
     }
 }
 setInterval(sendDailyTipToGroup, 60000);
+
 bot.command('testtip', async (ctx) => {
     if (ctx.from.id !== YOUR_ID) return ctx.reply('❌ Admin only.');
     await bot.telegram.sendMessage(GROUP_ID, `${dailyTips[Math.floor(Math.random() * dailyTips.length)]}\n\n🧪 *TEST*`, { parse_mode: 'Markdown' });
     ctx.reply('✅ Test tip sent');
 });
 
-// Leaderboard scheduler
+// ========== LEADERBOARD SCHEDULER ==========
 referralSystem.startLeaderboardScheduler(bot);
 
-// Launch
+// ========== LAUNCH ==========
 bot.launch().then(() => {
     console.log('✅ DETECTIVE JAI TELEGRAM BOT IS LIVE!');
+    console.log('📊 Natural language processing enabled');
+    console.log('🗣️ Pidgin + English support');
     console.log(`📊 ${getScammerCount()} scammers reported`);
 }).catch(err => { console.error('Launch failed:', err); process.exit(1); });
 
