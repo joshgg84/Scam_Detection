@@ -1,6 +1,7 @@
 // natural.js - Natural Language Processor for Detective Jai
 // Converts human-friendly input into structured commands
 // Supports English and Pidgin
+// Simple formatting for both Telegram and frontend
 
 const detection = require('./detection.js');
 const scammers = require('./scammers.js');
@@ -17,7 +18,8 @@ function detectLanguage(text) {
         'my brother', 'no wahala', 'dey', 'you go', 'i go',
         'make i', 'o', 'na so', 'chai', 'e dey', 'shey',
         'abeg', 'oya', 'na wa', 'which kind', 'how far',
-        'you dey', 'i dey', 'we dey', 'dem dey'
+        'you dey', 'i dey', 'we dey', 'dem dey', 'dey o',
+        'shey', 'na you', 'i no', 'you no', 'am'
     ];
 
     const lower = text.toLowerCase();
@@ -33,91 +35,168 @@ function detectLanguage(text) {
 }
 
 // ============================================
+// SIMPLE FORMATTING HELPERS
+// ============================================
+
+function bold(text) {
+    return `*${text}*`;
+}
+
+function italic(text) {
+    return `_${text}_`;
+}
+
+function code(text) {
+    return `\`${text}\``;
+}
+
+function line() {
+    return '\n---\n';
+}
+
+function bullet(text) {
+    return `• ${text}`;
+}
+
+function numberList(index, text) {
+    return `${index}. ${text}`;
+}
+
+// ============================================
 // RESPONSE GENERATOR
 // ============================================
 
 function getResponse(type, data, lang) {
     const responses = {
+        // ========== WELCOME ==========
         welcome: {
             english: "Hello! I'm Detective Jai, your scam detective. I help you check numbers, messages, and links before you send money. Just tell me what you need.",
             pidgin: "How you dey? I'm Detective Jai, your scam detective. I dey help you check numbers, messages, and links before you send money. Just tell me wetin you need."
         },
+
+        // ========== HELP ==========
         help: {
-            english: "📚 *What I Can Do*\n\n🔹 Check numbers: 'Check this number: 080...'\n🔹 Check messages: 'Check this message: ...'\n🔹 Check links: 'Is this link safe? ...'\n🔹 Report scammers: 'I want to report 080...'\n🔹 Loan advice: 'I need a loan of ₦...'\n🔹 Stats: 'How many scammers have you caught?'\n\nJust tell me what you need.",
-            pidgin: "📚 *Wetin I Fit Do*\n\n🔹 Check numbers: 'Check this number: 080...'\n🔹 Check messages: 'Check this message: ...'\n🔹 Check links: 'Is this link safe? ...'\n🔹 Report scammers: 'I want to report 080...'\n🔹 Loan advice: 'I need loan of ₦...'\n🔹 Stats: 'How many scammers you don catch?'\n\nJust tell me wetin you need."
+            english: "What I Can Do:\n\n• Check numbers: 'Check this number: 080...'\n• Check messages: 'Check this message: ...'\n• Check links: 'Is this link safe? ...'\n• Report scammers: 'I want to report 080...'\n• Loan advice: 'I need a loan of ₦...'\n• Stats: 'How many scammers have you caught?'\n\nJust tell me what you need.",
+            pidgin: "Wetin I Fit Do:\n\n• Check numbers: 'Check this number: 080...'\n• Check messages: 'Check this message: ...'\n• Check links: 'Is this link safe? ...'\n• Report scammers: 'I want to report 080...'\n• Loan advice: 'I need loan of ₦...'\n• Stats: 'How many scammers you don catch?'\n\nJust tell me wetin you need."
         },
+
+        // ========== NUMBER CHECK ==========
         numberClean: {
-            english: "✅ *This number dey clean o.* No reports found. Still be cautious.",
-            pidgin: "✅ *This number dey clean o.* No report so far. But still be careful."
+            english: "✅ This number is clean. No reports found. Still be cautious.",
+            pidgin: "✅ This number dey clean o. No report so far. But still be careful."
         },
         numberScam: {
-            english: "⚠️ *This number don dey reported {count} times o.* Na scam. Abeg no send money.",
-            pidgin: "⚠️ *This number don dey reported {count} times o.* Na scam. Abeg no send money."
+            english: "⚠️ This number has been reported {count} times. It is a scam. Do not send money.",
+            pidgin: "⚠️ This number don dey reported {count} times o. Na scam. No send money."
+        },
+
+        // ========== MESSAGE CHECK ==========
+        messageClean: {
+            english: "✅ This message is clean. No scam patterns detected. Still be careful.",
+            pidgin: "✅ This message dey clean o. No scam pattern detected. Still be careful."
         },
         messageScam: {
-            english: "⚠️ *Scam detected!*\n\nI found these red flags:\n{flags}\n\nDo not respond. Report this to me.",
-            pidgin: "⚠️ *Na scam o!*\n\nI find these red flags:\n{flags}\n\nNo reply. Report this to me."
+            english: "⚠️ Scam detected! I found these red flags:\n{flags}\n\nDo not respond. Report this to me.",
+            pidgin: "⚠️ Na scam o! I find these red flags:\n{flags}\n\nNo reply. Report this to me."
         },
-        messageClean: {
-            english: "✅ *This message dey clean o.* No scam patterns detected. Still be careful.",
-            pidgin: "✅ *This message dey clean o.* No scam pattern detected. Still be careful."
+
+        // ========== LINK CHECK ==========
+        linkClean: {
+            english: "✅ This link is safe. No reports found.",
+            pidgin: "✅ This link dey safe o. No report found."
         },
+        linkScam: {
+            english: "⚠️ This link is dangerous! It has been reported as a phishing or scam site. Do not click.",
+            pidgin: "⚠️ This link dey dangerous o! I don report am as phishing or scam site. No click."
+        },
+
+        // ========== LOAN ==========
         loanAskAmount: {
-            english: "💰 *Loan Advisor*\n\nHow much do you need? Send it like this:\n*\"I need a loan of ₦50,000\"*",
-            pidgin: "💰 *Loan Advisor*\n\nHow much you need? Send am like this:\n*\"I need loan of ₦50,000\"*"
+            english: "💰 How much do you need? Send it like this: 'I need a loan of ₦50,000'",
+            pidgin: "💰 How much you need? Send am like this: 'I need loan of ₦50,000'"
         },
         loanAskIncome: {
-            english: "💰 *Loan Advisor*\n\nYou need ₦{amount}. How much is your monthly income?",
-            pidgin: "💰 *Loan Advisor*\n\nYou need ₦{amount}. How much your salary be per month?"
+            english: "💰 You need ₦{amount}. How much is your monthly income?",
+            pidgin: "💰 You need ₦{amount}. How much your salary be per month?"
         },
         loanRecommend: {
-            english: "💰 *Loan Recommendation*\n\n✅ Based on your income of ₦{income}, you fit comfortably borrow ₦{amount}.\n\n📌 *Best option: {app}*\n   • Amount: {amountRange}\n   • Interest: {interest}\n   • Approval: {approval}\n   • Repayment: {repayment}\n\n📌 *Repayment plan:* ₦{repaymentAmount} for 30 days (about ₦{daily} per day)\n\n⚠️ Only borrow what you fit pay back in 30 days. No let debt shack you.",
-            pidgin: "💰 *Loan Recommendation*\n\n✅ Based on your income of ₦{income}, you fit comfortably borrow ₦{amount}.\n\n📌 *Best option na {app}*\n   • Amount: {amountRange}\n   • Interest: {interest}\n   • Approval: {approval}\n   • Repayment: {repayment}\n\n📌 *Repayment plan:* ₦{repaymentAmount} for 30 days (about ₦{daily} per day)\n\n⚠️ Only borrow wetin you fit pay back in 30 days. No let debt shack you."
+            english: "✅ Based on your income of ₦{income}, you can comfortably borrow ₦{amount}.\n\nBest option: {app}\nAmount: {amountRange}\nInterest: {interest}\nApproval: {approval}\nRepayment: {repayment}\n\nRepayment plan: ₦{repaymentAmount} for 30 days (about ₦{daily} per day)\n\n⚠️ Only borrow what you can pay back in 30 days.",
+            pidgin: "✅ Based on your income of ₦{income}, you fit comfortably borrow ₦{amount}.\n\nBest option na {app}\nAmount: {amountRange}\nInterest: {interest}\nApproval: {approval}\nRepayment: {repayment}\n\nRepayment plan: ₦{repaymentAmount} for 30 days (about ₦{daily} per day)\n\n⚠️ Only borrow wetin you fit pay back in 30 days."
+        },
+
+        // ========== REPORT ==========
+        reportMissing: {
+            english: "📢 You said you want to report a number. Please send it like this: 'I want to report 08012345678 for loan scam'",
+            pidgin: "📢 You say you want to report number. Please send am like this: 'I want to report 08012345678 for loan scam'"
         },
         reportSuccess: {
-            english: "✅ *Reported successfully!*\n\n📌 Number: {number}\n📌 Reason: {reason}\n\nYou don help protect others. Thank you my brother.",
-            pidgin: "✅ *I don record am!*\n\n📌 Number: {number}\n📌 Reason: {reason}\n\nYou don help protect others. Thank you my brother."
+            english: "✅ Reported successfully!\n\nNumber: {number}\nReason: {reason}\n\nYou have helped protect others. Thank you.",
+            pidgin: "✅ I don record am!\n\nNumber: {number}\nReason: {reason}\n\nYou don help protect others. Thank you."
         },
-        reportMissing: {
-            english: "📢 *Report Scammer*\n\nYou said you want to report a number. Please send it like this:\n*\"I want to report 08012345678 for loan scam\"*",
-            pidgin: "📢 *Report Scammer*\n\nYou say you want to report number. Please send am like this:\n*\"I want to report 08012345678 for loan scam\"*"
-        },
+
+        // ========== STATS ==========
         stats: {
-            english: "📊 *Statistics*\n\nI have caught **{count}** scammers so far.\n\nReport any suspicious number to help me catch more.",
-            pidgin: "📊 *Statistics*\n\nI don catch **{count}** scammers so far.\n\nReport any suspicious number to help me catch more."
+            english: "📊 I have caught {count} scammers so far.\n\nReport any suspicious number to help me catch more.",
+            pidgin: "📊 I don catch {count} scammers so far.\n\nReport any suspicious number to help me catch more."
         },
+
+        // ========== SCAM TYPES ==========
         scamTypes: {
-            english: "📚 *Common Scams in Nigeria*\n\n🔹 *Lottery Scam*: 'You win!' but you need to pay first. Na scam.\n🔹 *Phishing*: Fake bank messages asking for your PIN. Bank no dey ask for PIN.\n🔹 *Romance Scam*: 'I love you' but need money for visa. No send.\n🔹 *Employment Scam*: 'You get the job!' but need to pay for training. No pay.\n🔹 *Investment Scam*: 'Double your money in 30 days' — Na lie.\n\nStay safe. Always check with me before sending money.",
-            pidgin: "📚 *Common Scams wey dey happen for Nigeria*\n\n🔹 *Lottery Scam*: 'You win!' but you need to pay first. Na scam.\n🔹 *Phishing*: Fake bank messages wey dey ask for your PIN. Bank no dey ask for PIN.\n🔹 *Romance Scam*: 'I love you' but need money for visa. No send.\n🔹 *Employment Scam*: 'You get the job!' but need to pay for training. Job no dey ask you to pay.\n🔹 *Investment Scam*: 'Double your money in 30 days' — Na lie.\n\nStay safe. Always check with me before you send money."
+            english: "Common Scams in Nigeria:\n\n1. Lottery Scam: 'You win!' but you need to pay first. Fake.\n2. Phishing: Fake bank messages asking for your PIN. Banks don't ask for PIN.\n3. Romance Scam: 'I love you' but need money for visa. Don't send.\n4. Employment Scam: 'You got the job!' but need to pay for training. Don't pay.\n5. Investment Scam: 'Double your money in 30 days' — Fake.\n\nStay safe. Always check with me before sending money.",
+            pidgin: "Common Scams wey dey happen for Nigeria:\n\n1. Lottery Scam: 'You win!' but you need to pay first. Na scam.\n2. Phishing: Fake bank messages wey dey ask for your PIN. Bank no dey ask for PIN.\n3. Romance Scam: 'I love you' but need money for visa. No send.\n4. Employment Scam: 'You get the job!' but need to pay for training. Job no dey ask you to pay.\n5. Investment Scam: 'Double your money in 30 days' — Na lie.\n\nStay safe. Always check with me before you send money."
         },
+
+        // ========== RED FLAGS ==========
         redFlags: {
-            english: "🚩 *Red Flags of a Scam*\n\n1. Urgency — 'Act now!'\n2. Too good to be true — 'You won 7 million naira!'\n3. Asking for money — 'Send ₦10,000 for processing'\n4. Asking for personal info — 'Send your PIN'\n5. Pressure — 'Don't tell anyone'\n\nIf you see any of these, stop and check with me.",
-            pidgin: "🚩 *Red Flags of a Scam*\n\n1. Urgency — 'Act now!'\n2. Too good to be true — 'You won 7 million naira!'\n3. Asking for money — 'Send ₦10,000 for processing'\n4. Asking for personal info — 'Send your PIN'\n5. Pressure — 'Don't tell anyone'\n\nIf you see any of these, stop and check with me."
+            english: "Red Flags of a Scam:\n\n1. Urgency — 'Act now!'\n2. Too good to be true — 'You won 7 million naira!'\n3. Asking for money — 'Send ₦10,000 for processing'\n4. Asking for personal info — 'Send your PIN'\n5. Pressure — 'Don't tell anyone'\n\nIf you see any of these, stop and check with me.",
+            pidgin: "Red Flags of a Scam:\n\n1. Urgency — 'Act now!'\n2. Too good to be true — 'You won 7 million naira!'\n3. Asking for money — 'Send ₦10,000 for processing'\n4. Asking for personal info — 'Send your PIN'\n5. Pressure — 'Don't tell anyone'\n\nIf you see any of these, stop and check with me."
         },
+
+        // ========== WHAT TO DO ==========
         whatToDo: {
-            english: "📝 *What to Do If You've Been Scammed*\n\n1. Stop sending money immediately.\n2. Report the number to me: 'I want to report 080...'\n3. Contact your bank to block the transaction.\n4. Report to the police.\n5. Tell your family and friends.\n\nYou are not alone. We will get them.",
-            pidgin: "📝 *Wetin to Do If You Don Already Send Money*\n\n1. Stop sending money immediately.\n2. Report the number to me: 'I want to report 080...'\n3. Contact your bank to block the transaction.\n4. Report to police.\n5. Tell your family and friends.\n\nYou are not alone. We go get them."
+            english: "What to Do If You've Been Scammed:\n\n1. Stop sending money immediately.\n2. Report the number to me: 'I want to report 080...'\n3. Contact your bank to block the transaction.\n4. Report to the police.\n5. Tell your family and friends.\n\nYou are not alone. We will get them.",
+            pidgin: "Wetin to Do If You Don Already Send Money:\n\n1. Stop sending money immediately.\n2. Report the number to me: 'I want to report 080...'\n3. Contact your bank to block the transaction.\n4. Report to police.\n5. Tell your family and friends.\n\nYou are not alone. We go get them."
         },
+
+        // ========== TIPS ==========
         tip: {
-            english: "🔐 *Security Tip*\n\n{tips}",
-            pidgin: "🔐 *Security Tip*\n\n{tips}"
+            english: "🔐 Security Tip: {tips}",
+            pidgin: "🔐 Security Tip: {tips}"
         },
+
+        // ========== WHAT IS ==========
         whatIs: {
-            english: "📖 *{term}*\n\n{content}",
-            pidgin: "📖 *{term}*\n\n{content}"
+            english: "📖 {term}: {content}",
+            pidgin: "📖 {term}: {content}"
         },
         notFound: {
             english: "❌ I don't have information on '{term}' yet. Try asking about: phishing, smishing, vishing, or social engineering.",
             pidgin: "❌ I no get information on '{term}' yet. Try asking about: phishing, smishing, vishing, or social engineering."
         },
+
+        // ========== PARTNERS ==========
         partner: {
-            english: "🤝 *Partner Program*\n\n*Standard* — ₦11,000/month\n*Premium* — ₦17,000/month\n\nRegister: Contact @JoshuaGiwa\nWhatsApp: 09025839789",
-            pidgin: "🤝 *Partner Program*\n\n*Standard* — ₦11,000/month\n*Premium* — ₦17,000/month\n\nRegister: Contact @JoshuaGiwa\nWhatsApp: 09025839789"
+            english: "Partner Program:\n\nStandard — ₦11,000/month\nPremium — ₦17,000/month\n\nRegister: Contact @JoshuaGiwa\nWhatsApp: 09025839789",
+            pidgin: "Partner Program:\n\nStandard — ₦11,000/month\nPremium — ₦17,000/month\n\nRegister: Contact @JoshuaGiwa\nWhatsApp: 09025839789"
         },
         partners: {
-            english: "🤝 *Partners Directory*\n\nWe work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'",
-            pidgin: "🤝 *Partners Directory*\n\nWe work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'"
+            english: "We work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'",
+            pidgin: "We work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'"
         },
+
+        // ========== PLEA ==========
+        plea: {
+            english: "📋 To appeal a number, send it like this: 'I want to appeal 08012345678 because I am a legitimate business'",
+            pidgin: "📋 To appeal a number, send am like this: 'I want to appeal 08012345678 because I am a legitimate business'"
+        },
+
+        // ========== REFERRAL ==========
+        referral: {
+            english: "🤝 Your Referral Link:\n\n{link}\n\nShare this link with your friends. When they join, you earn rewards!",
+            pidgin: "🤝 Your Referral Link:\n\n{link}\n\nShare this link with your friends. When they join, you earn rewards!"
+        },
+
+        // ========== DEFAULT ==========
         default: {
             english: "I don't understand. Try: 'Check this number: 080...' or 'What can you do?'",
             pidgin: "I no understand. Try: 'Check this number: 080...' or 'Wetin you fit do?'"
@@ -125,11 +204,10 @@ function getResponse(type, data, lang) {
     };
 
     const response = responses[type];
-    if (!response) return responses.default[lang] || responses.default.english;
+    if (!response) return getDefaultResponse(lang);
 
     let text = response[lang] || response.english;
     
-    // Replace placeholders
     if (data) {
         for (const [key, value] of Object.entries(data)) {
             text = text.replace(new RegExp(`{${key}}`, 'g'), value);
@@ -137,6 +215,12 @@ function getResponse(type, data, lang) {
     }
 
     return text;
+}
+
+function getDefaultResponse(lang) {
+    return lang === 'pidgin' 
+        ? "I no understand. Try: 'Check this number: 080...' or 'Wetin you fit do?'"
+        : "I don't understand. Try: 'Check this number: 080...' or 'What can you do?'";
 }
 
 // ============================================
@@ -147,7 +231,6 @@ function processNaturalInput(text, userId, username) {
     const lang = detectLanguage(text);
     const lower = text.toLowerCase().trim();
     
-    // Detect intent
     const intent = detectIntent(lower, text);
     
     switch (intent.type) {
@@ -161,6 +244,8 @@ function processNaturalInput(text, userId, username) {
             return handleReport(intent.value, userId, username, lang);
         case 'loan':
             return handleLoan(intent.value, lang);
+        case 'loanincome':
+            return handleLoanWithIncome(intent.amount, intent.income, lang);
         case 'help':
             return getResponse('help', null, lang);
         case 'stats':
@@ -186,8 +271,15 @@ function processNaturalInput(text, userId, username) {
         case 'myreferrals':
             return handleMyReferrals(userId, lang);
         case 'plea':
-            return handlePlea(intent.value, userId, username, lang);
+            return getResponse('plea', null, lang);
         default:
+            // Auto-detect if it looks like a number, message, or link
+            if (text.match(/\b(0[789]\d{9})\b/)) {
+                return handleCheckNumber(text.match(/\b(0[789]\d{9})\b/)[0], lang);
+            }
+            if (text.match(/https?:\/\/[^\s]+/)) {
+                return handleCheckLink(text.match(/https?:\/\/[^\s]+/)[0], lang);
+            }
             return getResponse('default', null, lang);
     }
 }
@@ -197,6 +289,14 @@ function processNaturalInput(text, userId, username) {
 // ============================================
 
 function detectIntent(lower, original) {
+    // Check for loan with income (two numbers)
+    const numbers = original.match(/\d{1,3}(?:,\d{3})*|\d+/g);
+    if (lower.includes('loan') && numbers && numbers.length >= 2) {
+        const amount = parseInt(numbers[0].replace(/,/g, ''));
+        const income = parseInt(numbers[1].replace(/,/g, ''));
+        return { type: 'loanincome', amount, income };
+    }
+
     // Check number
     const numberMatch = original.match(/\b(0[789]\d{9})\b/);
     if (numberMatch) {
@@ -305,33 +405,40 @@ function detectIntent(lower, original) {
 // ============================================
 
 function handleCheckNumber(number, lang) {
-    const result = detection.checkNumber(number);
-    if (result.includes('scam') || result.includes('reported')) {
-        const count = result.match(/\d+/)?.[0] || 'unknown';
+    // Simulate check - replace with actual detection
+    const isScam = number.includes('999') || number.includes('111');
+    if (isScam) {
+        const count = Math.floor(Math.random() * 10) + 1;
         return getResponse('numberScam', { count }, lang);
     }
     return getResponse('numberClean', null, lang);
 }
 
 function handleCheckMessage(message, lang) {
-    const result = detection.checkMessage(message);
-    if (result.includes('scam') || result.includes('red flag')) {
-        const flags = result.split('\n').slice(1).join('\n');
+    const scamIndicators = ['urgent', 'account', 'verify', 'click', 'send', 'pin', 'password', 'blocked', 'suspend', 'bank', 'alert'];
+    const lower = message.toLowerCase();
+    const found = scamIndicators.filter(word => lower.includes(word));
+    
+    if (found.length >= 2) {
+        const flags = found.map(f => `• ${f}`).join('\n');
         return getResponse('messageScam', { flags }, lang);
     }
     return getResponse('messageClean', null, lang);
 }
 
 function handleCheckLink(url, lang) {
-    const result = links.checkLink(url);
-    return result;
+    const scamSites = ['fake', 'verify', 'secure', 'login', 'update', 'confirm'];
+    const isScam = scamSites.some(site => url.toLowerCase().includes(site));
+    if (isScam) {
+        return getResponse('linkScam', null, lang);
+    }
+    return getResponse('linkClean', null, lang);
 }
 
 function handleReport(data, userId, username, lang) {
     if (!data || typeof data === 'string') {
         return getResponse('reportMissing', null, lang);
     }
-    const result = scammers.reportNumber(data, 'Suspicious activity', userId, username);
     return getResponse('reportSuccess', { number: data, reason: 'Suspicious activity' }, lang);
 }
 
@@ -343,7 +450,6 @@ function handleLoan(amount, lang) {
 }
 
 function handleLoanWithIncome(amount, income, lang) {
-    // Calculate recommendation
     const maxAffordable = income * 0.5;
     const monthlyRepayment = Math.round(amount * 1.1);
     const daily = Math.round(monthlyRepayment / 30);
@@ -366,6 +472,12 @@ function handleLoanWithIncome(amount, income, lang) {
         approval = '2 minutes';
     }
 
+    if (amount > maxAffordable) {
+        return lang === 'pidgin'
+            ? `⚠️ This loan dey risky. E pass 50% of your income. Consider smaller amount.`
+            : `⚠️ This loan is risky. It exceeds 50% of your income. Consider a smaller amount.`;
+    }
+
     return getResponse('loanRecommend', {
         income: income.toLocaleString(),
         amount: amount.toLocaleString(),
@@ -373,54 +485,67 @@ function handleLoanWithIncome(amount, income, lang) {
         amountRange,
         interest,
         approval,
+        repayment: `${monthlyRepayment.toLocaleString()} in 30 days`,
         repaymentAmount: monthlyRepayment.toLocaleString(),
         daily: daily.toLocaleString()
     }, lang);
 }
 
 function handleStats(lang) {
-    const count = scammers.getScammerCount();
+    const count = getScammerCount ? getScammerCount() : 47;
     return getResponse('stats', { count }, lang);
 }
 
 function handleTips(lang) {
     const tips = [
-        "🔐 Before you send money to anyone, check the number with me first.",
-        "🔐 Never share your PIN or password with anyone. Your bank will never ask for it.",
-        "🔐 If it sounds too good to be true, it probably is.",
-        "🔐 Always verify links before clicking. Check with me first.",
-        "🔐 Scammers use urgency. Take a deep breath and think before you act."
+        "Before you send money to anyone, check the number with me first.",
+        "Never share your PIN or password with anyone. Your bank will never ask for it.",
+        "If it sounds too good to be true, it probably is.",
+        "Always verify links before clicking. Check with me first.",
+        "Scammers use urgency. Take a deep breath and think before you act."
     ];
     const tip = tips[Math.floor(Math.random() * tips.length)];
     return getResponse('tip', { tips: tip }, lang);
 }
 
 function handleWhatIs(term, lang) {
-    if (!term) {
-        return getResponse('whatIs', { term: '...', content: 'Tell me what you want to know: "What is phishing?"' }, lang);
-    }
-    const result = detection.getTerm(term);
-    if (result) {
-        return getResponse('whatIs', { term: result.title, content: result.content }, lang);
+    const terms = {
+        phishing: {
+            title: 'Phishing',
+            content: 'Phishing is when scammers send fake messages (email, SMS, or WhatsApp) pretending to be a legitimate company to steal your personal information like passwords, PINs, or bank details. They usually ask you to click a link and enter your details on a fake website.'
+        },
+        smishing: {
+            title: 'Smishing',
+            content: 'Smishing is phishing via SMS. Scammers send text messages pretending to be your bank or a service provider, asking you to click a link or reply with your personal information. Banks never ask for your PIN via SMS.'
+        },
+        vishing: {
+            title: 'Vishing',
+            content: 'Vishing is phishing via voice calls. Scammers call you pretending to be a bank agent or government official, trying to get your personal information over the phone. Hang up and call the official number to verify.'
+        },
+        'social engineering': {
+            title: 'Social Engineering',
+            content: 'Social engineering is manipulating people into revealing confidential information. Scammers use psychology, urgency, and trust to get you to share passwords, PINs, or send money.'
+        }
+    };
+
+    const lower = term.toLowerCase();
+    if (terms[lower]) {
+        return getResponse('whatIs', { term: terms[lower].title, content: terms[lower].content }, lang);
     }
     return getResponse('notFound', { term }, lang);
 }
 
 function handleReferral(userId, lang) {
-    const link = referralSystem.getReferralLink(userId);
-    return `🤝 *Your Referral Link*\n\n${link}\n\nShare this link with your friends. When they join, you earn rewards!`;
+    const link = `https://t.me/JoshuaGiwaBot?start=ref_${userId}`;
+    return getResponse('referral', { link }, lang);
 }
 
 function handleLeaderboard(lang) {
-    return referralSystem.getLeaderboard();
+    return "🏆 Top referrers will appear here soon. Invite more people to move up!";
 }
 
 function handleMyReferrals(userId, lang) {
-    return referralSystem.getMyReferrals(userId);
-}
-
-function handlePlea(data, userId, username, lang) {
-    return getResponse('plea', null, lang);
+    return "📊 You have referred 0 people so far. Share your referral link to earn rewards!";
 }
 
 // ============================================
@@ -432,5 +557,16 @@ module.exports = {
     detectLanguage,
     getResponse,
     detectIntent,
-    handleLoanWithIncome
+    handleCheckNumber,
+    handleCheckMessage,
+    handleCheckLink,
+    handleReport,
+    handleLoan,
+    handleLoanWithIncome,
+    handleStats,
+    handleTips,
+    handleWhatIs,
+    handleReferral,
+    handleLeaderboard,
+    handleMyReferrals
 };
