@@ -67,7 +67,23 @@ function numberList(index, text) {
 // ============================================
 
 function getSponsorMessage() {
-    return `\n\n🤝 *SPONSORED BY*\n\n*Standard* — ₦11,000/month\n*Premium* — ₦17,000/month\n\n📲 Contact: @JoshuaGiwa\n💬 WhatsApp: 09025839789`;
+    return `\n\n🤝 *BECOME A PARTNER*
+
+
+*What Partners Get:*
+• Your business promoted to 10,000+ users
+• Daily tip sponsorship (reach 5,000+ daily)
+• Featured in scam check responses
+• Priority support and updates
+• Brand visibility across all platforms
+
+*Plans:*
+📌 *Standard* — ₦11,000/month
+🌟 *Premium* — ₦17,000/month (includes featured placement)
+
+📲 Contact: @JoshuaGiwa
+💬 WhatsApp: 09025839789
+👥 Community: https://t.me/+8JUqlJ-4SBdlZTM0`;
 }
 
 // ============================================
@@ -90,12 +106,20 @@ function getResponse(type, data, lang) {
 
         // ========== NUMBER CHECK ==========
         numberClean: {
-            english: "✅ This number is clean. No reports found.",
-            pidgin: "✅ This number dey clean o. No report so far."
+            english: "✅ *NUMBER CLEAN*\n\nNo reports found for {number}.\n\n🟢 This number appears safe.\n\n⚠️ Still be cautious with unknown numbers.",
+            pidgin: "✅ *NUMBER CLEAN*\n\nNo report for {number} o.\n\n🟢 Dis number dey safe.\n\n⚠️ Still be careful with unknown numbers."
         },
         numberScam: {
-            english: "🚨 This number has been reported {count} times! It is a scam. DO NOT send money.",
-            pidgin: "🚨 This number don dey reported {count} times o! Na scam. NO send money."
+            english: "🚨 *SCAM NUMBER DETECTED!*\n\n⚠️ {number} has been reported {count} times!\n\n🔴 This is a CONFIRMED SCAM number.\n\n❌ DO NOT send money or share personal information.\n\n✅ Block this number immediately.\n\n📢 Report to EFCC: 08093322644",
+            pidgin: "🚨 *SCAM NUMBER DETECTED!*\n\n⚠️ {number} don dey reported {count} times!\n\n🔴 Na CONFIRMED SCAM number.\n\n❌ NO send money or share your information.\n\n✅ Block dis number immediately.\n\n📢 Report to EFCC: 08093322644"
+        },
+        numberTrusted: {
+            english: "✅ *TRUSTED CONTACT*\n\n{number} is verified as a trusted contact.\n\n🟢 Safe to communicate with.\n\n⚠️ Still verify any money requests directly.",
+            pidgin: "✅ *TRUSTED CONTACT*\n\n{number} na verified trusted contact.\n\n🟢 Safe to communicate with.\n\n⚠️ Still verify any money requests directly."
+        },
+        numberMixed: {
+            english: "⚠️ *MIXED REPORTS*\n\n{number} has {scamCount} scam reports AND is in your trusted contacts.\n\n🔴 Be very cautious! This number has scam reports despite being in your trusted list.\n\n✅ Verify directly with the person you know before taking any action.",
+            pidgin: "⚠️ *MIXED REPORTS*\n\n{number} get {scamCount} scam reports AND dey your trusted contacts.\n\n🔴 Be very careful! Dis number get scam reports even though e dey your trusted list.\n\n✅ Verify directly with di person you know before you do anything."
         },
 
         // ========== MESSAGE CHECK ==========
@@ -175,13 +199,13 @@ function getResponse(type, data, lang) {
         },
 
         // ========== PARTNERS ==========
-        partner: {
-            english: "Partner Program:\n\nStandard — ₦11,000/month\nPremium — ₦17,000/month\n\nRegister: Contact @JoshuaGiwa\nWhatsApp: 09025839789",
-            pidgin: "Partner Program:\n\nStandard — ₦11,000/month\nPremium — ₦17,000/month\n\nRegister: Contact @JoshuaGiwa\nWhatsApp: 09025839789"
+        partnerInfo: {
+            english: "🤝 *PARTNER PROGRAM*\n\n*What Partners Get:*\n• Your business promoted to 10,000+ users\n• Daily tip sponsorship (reach 5,000+ daily)\n• Featured in scam check responses\n• Priority support and updates\n• Brand visibility across all platforms\n\n*Plans:*\n📌 Standard — ₦11,000/month\n🌟 Premium — ₦17,000/month (includes featured placement)\n\n📲 Contact: @JoshuaGiwa\n💬 WhatsApp: 09025839789",
+            pidgin: "🤝 *PARTNER PROGRAM*\n\n*Wetin Partners Get:*\n• Your business go show for 10,000+ users\n• Daily tip sponsorship (reach 5,000+ daily)\n• Featured for scam check responses\n• Priority support and updates\n• Brand visibility across all platforms\n\n*Plans:*\n📌 Standard — ₦11,000/month\n🌟 Premium — ₦17,000/month (includes featured placement)\n\n📲 Contact: @JoshuaGiwa\n💬 WhatsApp: 09025839789"
         },
-        partners: {
-            english: "We work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'",
-            pidgin: "We work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'"
+        partnersList: {
+            english: "🤝 *OUR PARTNERS*\n\nWe work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'\n\nCurrent Partners:\n• (Add your business here!)",
+            pidgin: "🤝 *OUR PARTNERS*\n\nWe work with trusted businesses to keep you safe.\n\nTo become a partner: Send 'How can I become a partner?'\n\nCurrent Partners:\n• (Add your business here!)"
         },
 
         // ========== PLEA ==========
@@ -330,10 +354,10 @@ function detectIntent(lower, original) {
 
     // Partners
     if (lower.includes('partner') || lower.includes('partners')) {
-        if (lower.includes('how to become') || lower.includes('how can i')) {
-            return { type: 'partner' };
+        if (lower.includes('how to become') || lower.includes('how can i') || lower.includes('what is partner')) {
+            return { type: 'partnerinfo' };
         }
-        return { type: 'partners' };
+        return { type: 'partnerslist' };
     }
 
     // Referral
@@ -367,14 +391,47 @@ function detectIntent(lower, original) {
 // ============================================
 
 function handleCheckNumber(number, lang) {
-    const reported = detection.checkNumberInDatabase ? detection.checkNumberInDatabase(number) : false;
+    // Clean the number
+    const cleaned = number.toString().replace(/\D/g, '');
+    
+    // Check if in scam database
+    const isScam = detection.checkNumberInDatabase ? detection.checkNumberInDatabase(cleaned) : false;
+    const scamCount = isScam ? Math.floor(Math.random() * 10) + 1 : 0;
+    
+    // Check if in trusted contacts (from partner.js)
+    let isTrusted = false;
+    try {
+        const partnerSystem = require('./partner.js');
+        if (partnerSystem.isTrustedContact) {
+            isTrusted = partnerSystem.isTrustedContact(cleaned);
+        }
+    } catch (err) {
+        // partner.js not available or function doesn't exist
+    }
+    
     let response;
     
-    if (reported) {
-        const count = Math.floor(Math.random() * 10) + 1;
-        response = getResponse('numberScam', { count }, lang);
-    } else {
-        response = getResponse('numberClean', null, lang);
+    // Case 1: In both scam database AND trusted contacts (conflict!)
+    if (isScam && isTrusted) {
+        response = getResponse('numberMixed', { 
+            number: cleaned, 
+            scamCount: scamCount 
+        }, lang);
+    }
+    // Case 2: In trusted contacts only
+    else if (isTrusted) {
+        response = getResponse('numberTrusted', { number: cleaned }, lang);
+    }
+    // Case 3: In scam database only
+    else if (isScam) {
+        response = getResponse('numberScam', { 
+            number: cleaned, 
+            count: scamCount 
+        }, lang);
+    }
+    // Case 4: Clean number (not in either)
+    else {
+        response = getResponse('numberClean', { number: cleaned }, lang);
     }
     
     return response + getSponsorMessage();
@@ -620,10 +677,10 @@ function processNaturalInput(text, userId, username) {
             return handleTips(lang);
         case 'whatis':
             return handleWhatIs(intent.value, lang);
-        case 'partners':
-            return getResponse('partners', null, lang);
-        case 'partner':
-            return getResponse('partner', null, lang);
+        case 'partnerinfo':
+            return getResponse('partnerInfo', null, lang);
+        case 'partnerslist':
+            return getResponse('partnersList', null, lang);
         case 'referral':
             return handleReferral(userId, lang);
         case 'leaderboard':
