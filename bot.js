@@ -1,5 +1,5 @@
-// bot.js - Fixed Admin Commands
-// Replace your entire bot.js with this:
+// bot.js - FULLY FIXED VERSION
+// Replace your ENTIRE bot.js with this:
 
 const { Telegraf } = require('telegraf');
 const express = require('express');
@@ -56,8 +56,11 @@ const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
 const GROUP_ID = -1003513272328;
 let awaitingTestimonial = {};
 
-// ========== ADMIN COMMAND REGISTRATION ==========
-function registerAdminCommandsOnce() {
+// ========== REGISTER ADMIN COMMANDS IMMEDIATELY ==========
+// We need to register admin commands BEFORE the middleware runs
+// This ensures /adminhelp handler exists when needed
+
+function registerAdminCommandsNow() {
     if (adminCommandsRegistered) return;
     
     const modules = lazyLoadModules();
@@ -76,8 +79,16 @@ function registerAdminCommandsOnce() {
     console.log('✅ Admin commands registered');
 }
 
-// ========== ADMIN COMMAND HANDLER ==========
-// This handles ALL admin commands including adminhelp
+// ========== REGISTER ADMIN COMMANDS ON STARTUP ==========
+// This ensures /adminhelp is available immediately
+// But we'll lazy load the modules first
+setTimeout(() => {
+    console.log('⏳ Pre-registering admin commands...');
+    registerAdminCommandsNow();
+}, 1000);
+
+// ========== ADMIN GUARD MIDDLEWARE ==========
+// This runs BEFORE any command to check admin access
 bot.use(async (ctx, next) => {
     const msg = ctx.message?.text;
     if (msg && msg.startsWith('/')) {
@@ -103,41 +114,14 @@ bot.use(async (ctx, next) => {
                 );
             }
             
-            // Register admin commands if not already registered
-            registerAdminCommandsOnce();
+            // Make sure admin commands are registered
+            registerAdminCommandsNow();
             
-            // For adminhelp, we need to let the command handler run
-            if (cmd === 'adminhelp') {
-                return next();
-            }
+            // Let the command pass through to its handler
+            return next();
         }
     }
     return next();
-});
-
-// ========== ADMIN HELP COMMAND ==========
-// This is the handler for /adminhelp
-bot.command('adminhelp', async (ctx) => {
-    // Double-check admin status
-    if (ctx.from.id !== YOUR_ID) {
-        return ctx.reply('🚫 *Access Denied*', { parse_mode: 'Markdown' });
-    }
-    
-    // Make sure admin commands are registered
-    registerAdminCommandsOnce();
-    
-    // Now get the modules and show help
-    const modules = lazyLoadModules();
-    
-    // Use the admin module's help message
-    const helpMessage = modules.admin.getAdminHelpMessage(
-        modules.partnerSystem, 
-        modules.tips.dailyTips, 
-        modules.detection.scamTerms, 
-        modules.linkModule
-    );
-    
-    ctx.reply(helpMessage, { parse_mode: 'Markdown' });
 });
 
 // ========== VALID COMMANDS ==========
@@ -795,6 +779,11 @@ bot.command('testtip', async (ctx) => {
 
 // ========== LAUNCH ==========
 console.log('🚀 Starting bot...');
+
+// Register admin commands immediately on startup
+setTimeout(() => {
+    registerAdminCommandsNow();
+}, 500);
 
 bot.launch()
     .then(() => {
