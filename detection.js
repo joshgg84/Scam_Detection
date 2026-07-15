@@ -4,7 +4,7 @@
 
 const fs = require('fs');
 const linkModule = require('./links.js');
-const { getAllScammers } = require('./scammers.js');
+const { getAllScammers, loadTrustedNumbers, getTrustedNumberInfo } = require('./scammers.js');
 
 // ========== LOAD TERMS DATABASE ==========
 let scamTerms = {};
@@ -58,6 +58,56 @@ function checkNumberInDatabase(phoneNumber) {
     });
 }
 
+// ========== CHECK NUMBER WITH NAME (INCLUDES real.json) ==========
+function checkNumberWithName(phoneNumber) {
+    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    if (cleaned.length === 0) return { success: false, error: 'Invalid phone number' };
+    
+    // Check if in scammers.json
+    const isScammer = checkNumberInDatabase(cleaned);
+    
+    // Check if in real.json (trusted numbers)
+    const trustedInfo = getTrustedNumberInfo(cleaned);
+    const isTrusted = !!trustedInfo;
+    
+    // Get all scammers for count
+    const scammers = getAllScammers();
+    const scammerCount = scammers.length;
+    
+    return {
+        success: true,
+        phoneNumber: cleaned,
+        isScammer: isScammer,
+        isTrusted: isTrusted,
+        trustedName: trustedInfo ? trustedInfo.name : null,
+        trustedPhone: trustedInfo ? trustedInfo.phone : null,
+        scammerCount: scammerCount,
+        status: isScammer ? 'scammer' : (isTrusted ? 'trusted' : 'clean')
+    };
+}
+
+// ========== SEARCH REAL.JSON ==========
+function searchRealJson(query) {
+    const trustedNumbers = loadTrustedNumbers();
+    if (!trustedNumbers || trustedNumbers.length === 0) {
+        return { success: true, results: [], count: 0 };
+    }
+    
+    const lowerQuery = query.toLowerCase();
+    const results = trustedNumbers.filter(item => {
+        const phoneMatch = item.phone && item.phone.includes(query);
+        const nameMatch = item.name && item.name.toLowerCase().includes(lowerQuery);
+        return phoneMatch || nameMatch;
+    });
+    
+    return {
+        success: true,
+        results: results,
+        count: results.length,
+        query: query
+    };
+}
+
 // ========== ENHANCED SCAM DETECTION (CONTEXT-AWARE) ==========
 function analyzeMessage(text) {
     const alerts = [];
@@ -102,15 +152,6 @@ function analyzeMessage(text) {
         { phrase: 'binary plan', points: 15, explanation: 'Binary compensation plans are common in scam MLMs.' },
         { phrase: 'matrix plan', points: 15, explanation: 'Matrix plans are often pyramid schemes in disguise.' },
         { phrase: 'unilevel plan', points: 10, explanation: 'Be cautious of MLM compensation plans.' },
-        { phrase: 'army', points: 20, explanation: 'Scammers pretend to be military to seem trustworthy.' },
-        { phrase: 'million dollars', points: 25, explanation: 'Large money promises are classic scam tactics.' },
-        { phrase: 'million naira', points: 25, explanation: 'Large money promises are classic scam tactics.' },
-        { phrase: 'usd', points: 10, explanation: 'Scammers often promise foreign currency.' },
-        { phrase: 'move money', points: 20, explanation: 'Scammers need help "moving" money from overseas.' },
-        { phrase: 'military officer', points: 20, explanation: 'Fake military romance scam.' },
-        { phrase: 'syria', points: 15, explanation: 'Common location for romance scammers.' },
-        { phrase: 'receive money', points: 20, explanation: 'They want to use your bank account.' },
-        { phrase: '40%', points: 15, explanation: 'Scammers promise large percentages to lure you.' },
         
         // Crypto scam phrases
         { phrase: 'cloud mining', points: 20, explanation: 'Cloud mining is often a scam. Most legitimate mining requires equipment.' },
@@ -140,9 +181,14 @@ function analyzeMessage(text) {
         { phrase: 'viewing fee', points: 15, explanation: 'Legitimate landlords don\'t charge viewing fees.' },
         
         // Romance scams
-        { phrase: 'military deployment', points: 15, explanation: 'Common romance scam tactic: fake military member needs money.' },
-        { phrase: 'overseas worker', points: 10, explanation: 'Scammers pretend to be overseas workers needing emergency funds.' },
-        { phrase: 'sick relative', points: 10, explanation: 'Fake medical emergencies are common in romance scams.' }
+        { phrase: 'us army', points: 20, explanation: 'Scammers pretend to be US military to seem trustworthy.' },
+        { phrase: 'military officer', points: 20, explanation: 'Fake military romance scam.' },
+        { phrase: 'syria', points: 15, explanation: 'Common location for romance scammers.' },
+        { phrase: 'million dollars', points: 25, explanation: 'Large money promises are classic scam tactics.' },
+        { phrase: 'move money', points: 20, explanation: 'Scammers need help "moving" money from overseas.' },
+        { phrase: 'receive money', points: 20, explanation: 'They want to use your bank account.' },
+        { phrase: '40%', points: 15, explanation: 'Scammers promise large percentages to lure you.' },
+        { phrase: 'help me receive', points: 25, explanation: 'They want you to be a money mule.' }
     ];
     
     // ========== SENSITIVE INFO REQUESTS ==========
@@ -185,8 +231,15 @@ function analyzeMessage(text) {
             alerts.push(`🚨 ${phoneMatch[0]} is a REPORTED SCAMMER! DO NOT CALL or SEND MONEY.`);
             riskScore += 50;
         } else {
-            alerts.push(`📞 Phone number found: ${phoneMatch[0]} → Be cautious if this number contacts you.`);
-            riskScore += 5;
+            // Check if in real.json
+            const trustedInfo = getTrustedNumberInfo(phoneMatch[0]);
+            if (trustedInfo) {
+                alerts.push(`📞 Phone found: ${phoneMatch[0]} (${trustedInfo.name}) → This is a TRUSTED number. Be cautious if misused.`);
+                riskScore += 2;
+            } else {
+                alerts.push(`📞 Phone number found: ${phoneMatch[0]} → Be cautious if this number contacts you.`);
+                riskScore += 5;
+            }
         }
     }
     
@@ -331,242 +384,18 @@ const whatToDoContent = `🆘 *YOU'VE BEEN SCAMMED*
 4. Report number to this bot: /report
 5. Join our community for support: https://t.me/+8JUqlJ-4SBdlZTM0`;
 
-// ============================================
-// COMMAND HANDLERS
-// ============================================
-
-function handleWelcome() {
-    return "Hello! I'm Detective Jai, your scam detective. I help you check numbers, messages, and links before you send money. Just tell me what you need.";
-}
-
-function handleHelp() {
-    return "What I Can Do:\n\n• Check numbers: 'Check this number: 080...'\n• Check messages: 'Check this message: ...'\n• Check links: 'Is this link safe? ...'\n• Report scammers: 'I want to report 080...'\n• Loan advice: 'I need a loan of ₦...'\n• Stats: 'How many scammers have you caught?'\n\nJust tell me what you need.";
-}
-
-function handleCheckNumber(number) {
-    const isScam = checkNumberInDatabase ? checkNumberInDatabase(number) : false;
-    if (isScam) {
-        const count = Math.floor(Math.random() * 10) + 1;
-        return `🚨 *SCAM NUMBER DETECTED!*\n\n⚠️ ${number} has been reported ${count} times!\n\n🔴 This is a CONFIRMED SCAM number.\n\n❌ DO NOT send money or share personal information.\n\n✅ Block this number immediately.\n\n📢 Report to EFCC: 08093322644`;
-    }
-    return `✅ *NUMBER CLEAN*\n\nNo reports found for ${number}.\n\n🟢 This number appears safe.\n\n⚠️ Still be cautious with unknown numbers.`;
-}
-
-function handleCheckMessage(message) {
-    const analysis = analyzeMessage(message);
-    let alertsSummary = '';
-    if (analysis.alerts && analysis.alerts.length > 0) {
-        alertsSummary = analysis.alerts.slice(0, 5).map(a => `• ${a}`).join('\n');
-    } else {
-        alertsSummary = '✅ No scam indicators found.';
-    }
-    const riskScore = analysis.riskScore || 0;
-    const riskHeader = `*${analysis.emoji} RISK LEVEL: ${analysis.riskLevel || 'LOW'}*\n\n`;
-    return `${riskHeader}🔍 *MESSAGE ANALYSIS*\n\n${alertsSummary}\n\n📊 *Risk Score:* ${riskScore}%\n\n${analysis.recommendation || 'Stay cautious.'}`;
-}
-
-function handleCheckLink(url) {
-    return `🔍 *LINK ANALYSIS*\n\nURL: ${url}\n\n⚠️ Be careful with links from unknown senders.\n\n✅ Verify the URL before clicking.\n\n📢 Report suspicious links to help others.`;
-}
-
-function handleReport(number, userId, username) {
-    if (!number) return "📢 Please provide a number to report.\n\nExample: 'I want to report 08012345678 for loan scam'";
-    return `✅ Reported successfully!\n\nNumber: ${number}\n\nYou have helped protect others. Thank you.`;
-}
-
-function handlePlea(number, userId, username) {
-    return `📋 To appeal a number, send it like this: 'I want to appeal 08012345678 because I am a legitimate business'`;
-}
-
-function handleLoan(amount) {
-    if (!amount || amount === 'ask') {
-        return "💰 How much do you need? Send it like this: 'I need a loan of ₦50,000'";
-    }
-    return `💰 You need ₦${amount.toLocaleString()}. How much is your monthly income?`;
-}
-
-function handleLoanWithIncome(amount, income) {
-    const maxAffordable = income * 0.5;
-    const monthlyRepayment = Math.round(amount * 1.1);
-    const daily = Math.round(monthlyRepayment / 30);
-
-    let app, amountRange, interest, approval, repayment;
-    
-    if (amount <= 100000) {
-        app = 'Carbon (formerly Paylater)';
-        amountRange = '₦2,000 - ₦100,000';
-        interest = '5-10% monthly';
-        approval = 'Instant (5 mins)';
-        repayment = 'Up to 30 days';
-    } else if (amount <= 500000) {
-        app = 'FairMoney';
-        amountRange = '₦2,000 - ₦500,000';
-        interest = '5-15% monthly';
-        approval = 'Instant (10 mins)';
-        repayment = 'Up to 60 days';
-    } else if (amount <= 1000000) {
-        app = 'Aella Credit';
-        amountRange = '₦1,000 - ₦1,000,000';
-        interest = '3-6% monthly';
-        approval = '24-48 hours';
-        repayment = 'Up to 90 days';
-    } else {
-        app = 'Sterling Bank';
-        amountRange = '₦500,000 - ₦5,000,000';
-        interest = '2-4% monthly';
-        approval = '3-7 days';
-        repayment = 'Up to 180 days';
-    }
-
-    return `✅ Based on your income of ₦${income.toLocaleString()}, you can comfortably borrow ₦${amount.toLocaleString()}.\n\nBest option: ${app}\nAmount: ${amountRange}\nInterest: ${interest}\nApproval: ${approval}\nRepayment: ${repayment}\n\nRepayment plan: ₦${monthlyRepayment.toLocaleString()} for 30 days (about ₦${daily.toLocaleString()} per day)\n\n⚠️ Only borrow what you can pay back in 30 days.`;
-}
-
-function handleStats() {
-    const count = getScammerCount ? getScammerCount() : 47;
-    return `📊 I have caught ${count} scammers so far.\n\nReport any suspicious number to help me catch more.`;
-}
-
-function handleScamTypes() {
-    return "Common Scams in Nigeria:\n\n1. Lottery Scam: 'You win!' but you need to pay first. Fake.\n2. Phishing: Fake bank messages asking for your PIN. Banks don't ask for PIN.\n3. Romance Scam: 'I love you' but need money for visa. Don't send.\n4. Employment Scam: 'You got the job!' but need to pay for training. Don't pay.\n5. Investment Scam: 'Double your money in 30 days' — Fake.\n\nStay safe. Always check with me before sending money.";
-}
-
-function handleRedFlags() {
-    return redFlagsContent;
-}
-
-function handleWhatToDo() {
-    return whatToDoContent;
-}
-
-function handleTips() {
-    const tips = [
-        'Never share your PIN or OTP with anyone.',
-        'Verify before you trust. Always double-check.',
-        'Report suspicious numbers to help protect others.',
-        'Don\'t click on links from unknown senders.',
-        'If it sounds too good to be true, it probably is.'
-    ];
-    const randomTip = tips[Math.floor(Math.random() * tips.length)];
-    return `🔐 Security Tip: ${randomTip}`;
-}
-
-function handleWhatIs(term) {
-    if (!term) return "📖 What would you like to know about? Try: 'What is phishing?'";
-    const terms = {
-        'phishing': 'A scam where criminals pretend to be legitimate companies to steal your personal information.',
-        'smishing': 'Phishing via SMS text messages.',
-        'vishing': 'Phishing via phone calls.',
-        'social engineering': 'Manipulating people into revealing confidential information.',
-        'sim swap': 'When a scammer tricks your mobile network into transferring your number to their SIM.',
-        'investment scam': 'A scheme promising high returns that are actually non-existent.',
-        'romance scam': 'When someone pretends to be in love with you to get money.',
-        '419': 'A Nigerian advance-fee scam where you are promised a share of a large sum of money in exchange for a small upfront payment.'
-    };
-    const content = terms[term.toLowerCase()];
-    if (content) {
-        return `📖 ${term}: ${content}`;
-    }
-    return `❌ I don't have information on '${term}' yet. Try asking about: phishing, smishing, vishing, social engineering, or 419.`;
-}
-
-function handlePartners() {
-    try {
-        const natural = require('./natural.js');
-        return natural.getSponsorMessage ? natural.getSponsorMessage() : "🤝 *OUR PARTNERS*\n\nNo partners yet. Be the first!\nContact @JoshuaGiwa";
-    } catch (err) {
-        return "🤝 *OUR PARTNERS*\n\nNo partners yet. Be the first!\nContact @JoshuaGiwa";
-    }
-}
-
-function handlePartnerProgram() {
-    return "🤝 *BECOME A PARTNER*\n\n*What You Get:*\n• Your business featured in scam check responses\n• Daily tip sponsorship (reach 5,000+ users)\n• Brand visibility across all platforms\n\n*Plans:*\n📌 Standard — ₦11,000/month\n🌟 Premium — ₦17,000/month\n\n📲 Contact: @JoshuaGiwa\n💬 WhatsApp: 09025839789";
-}
-
-function handleReferral(userId) {
-    try {
-        const referralSystem = require('./referrals.js');
-        const links = referralSystem.getAllReferralLinks ? referralSystem.getAllReferralLinks(userId) : {
-            telegram: `https://t.me/JoshuaGiwaBot?start=ref_${userId}`,
-            web: `https://detective-jai.onrender.com/signup?ref=${userId}`
-        };
-        
-        let stats = { invites: 0, rank: 'Not ranked', totalReferrals: 0 };
-        if (referralSystem.getUserReferralStats) {
-            stats = referralSystem.getUserReferralStats(userId);
-        }
-        
-        return `🤝 *YOUR REFERRAL LINKS*\n\n📊 People you've invited: *${stats.invites}*\n🏆 Your rank: *${stats.rank ? `#${stats.rank}` : 'Not ranked'}*\n📊 Total referrals: *${stats.totalReferrals}*\n\n📱 *Telegram Link:*\n${links.telegram}\n\n🌐 *Web App Link:*\n${links.web}\n\nShare these links. When friends join, you get credit!`;
-    } catch (err) {
-        return `🤝 Your Referral Link:\n\nhttps://t.me/JoshuaGiwaBot?start=ref_${userId}\n\nShare this link with your friends. When they join, you earn rewards!`;
-    }
-}
-
-function handleLeaderboard() {
-    try {
-        const referralSystem = require('./referrals.js');
-        if (referralSystem.getLeaderboardMessage) {
-            const result = referralSystem.getLeaderboardMessage();
-            return result.message;
-        }
-    } catch (err) {
-        // Fallback
-    }
-    return "🏆 *LEADERBOARD*\n\nNo referrals yet. Be the first to invite someone!";
-}
-
-function handleMyReferrals(userId) {
-    try {
-        const referralSystem = require('./referrals.js');
-        if (referralSystem.getUserStatsMessage) {
-            return referralSystem.getUserStatsMessage(userId, 'User');
-        }
-    } catch (err) {
-        // Fallback
-    }
-    return "📊 *YOUR REFERRALS*\n\nYou've referred people so far.\n\nKeep sharing your link to earn more rewards!";
-}
-
-function handleDefault() {
-    return "I don't understand. Try: 'Check this number: 080...' or 'What can you do?'";
-}
-
-// ============================================
-// EXPORTS
-// ============================================
-
+// ========== EXPORTS ==========
 module.exports = {
-    // Core functions
     analyzeMessage,
     analyzeMessageWithLinks,
     checkNumberInDatabase,
+    checkNumberWithName,
+    searchRealJson,
     getTerm,
     getAllTermKeys,
     getCommonScams,
     loadTerms,
     redFlagsContent,
     whatToDoContent,
-    scamTerms,
-    
-    // Command handlers
-    handleWelcome,
-    handleHelp,
-    handleCheckNumber,
-    handleCheckMessage,
-    handleCheckLink,
-    handleReport,
-    handlePlea,
-    handleLoan,
-    handleLoanWithIncome,
-    handleStats,
-    handleScamTypes,
-    handleRedFlags,
-    handleWhatToDo,
-    handleTips,
-    handleWhatIs,
-    handlePartners,
-    handlePartnerProgram,
-    handleReferral,
-    handleLeaderboard,
-    handleMyReferrals,
-    handleDefault
+    scamTerms
 };
