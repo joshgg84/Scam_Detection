@@ -38,22 +38,58 @@
     },
     {
       "phone": "07086002560",
-      "name": "Unknown - Add name"
+      "name": "Lost number"
     },
     {
-      "phone": "2349116299599",
+      "phone": "+2349116299599",
       "name": "Nancy Isaiah",
       "addedBy": "admin",
       "addedAt": "2026-05-16T17:33:31.164Z"
     },
     {
-      "phone": "2349168924053",
+      "phone": "+2349168924053",
       "name": "Peace Albert",
       "addedBy": "admin",
       "addedAt": "2026-05-16T17:35:28.916Z"
+    },
+    {
+      "phone": "08108570541",
+      "name": "Joshua Ochoche"
+    },
+    {
+      "name": "Jennifer Bitrus",
+      "phone": "08147843259"
+    },
+    {
+      "phone": "07063388390",
+      "name": "Paul Rika"
+    },
+    {
+      "phone": "+13605244993",
+      "name": "WhatsApp"
+    },
+    {
+      "phone": "+27635228644",
+      "name": "Keletso Lekone"
+    },
+    {
+      "phone": "+2348146094951",
+      "name": "Godwin Giwa"
+    },
+    {
+      "phone": "+2349027354038",
+      "name": "Rita Mark"
+    },
+    {
+      "phone": "+2347031939715",
+      "name": "Oloniyo Bolaji"
+    },
+    {
+      "phone": "09115253795",
+      "name": "Helen Giwa"
     }
   ],
   "description": "Numbers in this list require 3 unique reports before being marked as scammer",
   "lastUpdated": "2026-05-16T17:35:28.916Z",
-  "totalTrusted": 12
+  "totalTrusted": 21
 }
