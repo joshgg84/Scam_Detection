@@ -11,6 +11,36 @@ const REAL_FILE = 'real.json';
 const USER_REPORTS_FILE = 'userReports.json';
 const PLEAS_FILE = 'pleas.json';
 
+// ========== NORMALIZE NIGERIAN PHONE NUMBERS ==========
+function normalizePhoneNumber(phoneNumber) {
+    if (!phoneNumber) return null;
+    
+    // Remove all non-digit characters
+    let cleaned = phoneNumber.toString().replace(/\D/g, '');
+    
+    // Remove leading '234' (Nigeria country code) and replace with '0'
+    if (cleaned.startsWith('234')) {
+        cleaned = '0' + cleaned.slice(3);
+    }
+    
+    // Remove leading '2340' or '2341' (some formats)
+    if (cleaned.startsWith('2340') || cleaned.startsWith('2341')) {
+        cleaned = '0' + cleaned.slice(3);
+    }
+    
+    // If it's 10 digits, add leading 0
+    if (cleaned.length === 10 && cleaned.match(/^[789][01]\d{8}$/)) {
+        cleaned = '0' + cleaned;
+    }
+    
+    // Check if it's a valid Nigerian number (11 digits starting with 0[789][01])
+    if (cleaned.length === 11 && cleaned.match(/^0[789][01]\d{8}$/)) {
+        return cleaned;
+    }
+    
+    return null;
+}
+
 // ========== LOAD TRUSTED NUMBERS (REAL.JSON) ==========
 function loadTrustedNumbers() {
     try {
@@ -25,19 +55,23 @@ function loadTrustedNumbers() {
 }
 
 function isTrustedNumber(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) return false;
+    
     const trusted = loadTrustedNumbers();
     return trusted.some(item => {
-        const itemCleaned = item.phone.toString().replace(/\D/g, '');
+        const itemCleaned = normalizePhoneNumber(item.phone);
         return itemCleaned === cleaned;
     });
 }
 
 function getTrustedNumberInfo(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) return null;
+    
     const trusted = loadTrustedNumbers();
     return trusted.find(item => {
-        const itemCleaned = item.phone.toString().replace(/\D/g, '');
+        const itemCleaned = normalizePhoneNumber(item.phone);
         return itemCleaned === cleaned;
     }) || null;
 }
@@ -53,11 +87,15 @@ function searchTrustedNumbers(query) {
 }
 
 function addToTrustedList(phoneNumber, name, addedBy = 'admin') {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) {
+        return { success: false, message: 'Invalid phone number format' };
+    }
+    
     let trusted = loadTrustedNumbers();
     
     // Check if already exists
-    if (trusted.some(item => item.phone.toString().replace(/\D/g, '') === cleaned)) {
+    if (trusted.some(item => normalizePhoneNumber(item.phone) === cleaned)) {
         return { success: false, message: `${cleaned} already in trusted list` };
     }
     
@@ -80,15 +118,19 @@ function addToTrustedList(phoneNumber, name, addedBy = 'admin') {
 }
 
 function removeFromTrustedList(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) {
+        return { success: false, message: 'Invalid phone number format' };
+    }
+    
     let trusted = loadTrustedNumbers();
-    const removed = trusted.find(item => item.phone.toString().replace(/\D/g, '') === cleaned);
+    const removed = trusted.find(item => normalizePhoneNumber(item.phone) === cleaned);
     
     if (!removed) {
         return { success: false, message: `${cleaned} not found in trusted list` };
     }
     
-    const newTrusted = trusted.filter(item => item.phone.toString().replace(/\D/g, '') !== cleaned);
+    const newTrusted = trusted.filter(item => normalizePhoneNumber(item.phone) !== cleaned);
     fs.writeFileSync(REAL_FILE, JSON.stringify({
         numbers: newTrusted,
         description: "Numbers in this list require 3 unique reports before being marked as scammer",
@@ -147,12 +189,15 @@ function saveUserReports(userReports) {
 
 function hasUserReported(userId, phoneNumber) {
     const userReports = loadUserReports();
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) return false;
     return userReports[userId]?.includes(cleaned) || false;
 }
 
 function addUserReport(userId, phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) return false;
+    
     const userReports = loadUserReports();
     
     if (!userReports[userId]) {
@@ -179,7 +224,9 @@ function getUserReportStats(userId) {
 
 // ========== CHECK IF NUMBER IS SCAMMER ==========
 function isScammer(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) return false;
+    
     const scammers = loadScammers();
     return scammers.includes(cleaned);
 }
@@ -207,7 +254,11 @@ function getPendingReports() {
 
 // ========== MANUALLY VERIFY PENDING NUMBER ==========
 function manuallyVerifyScammer(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) {
+        return { success: false, message: 'Invalid phone number format' };
+    }
+    
     let pending = loadPending();
     let scammers = loadScammers();
     
@@ -227,7 +278,11 @@ function manuallyVerifyScammer(phoneNumber) {
 
 // ========== REJECT PENDING REPORT ==========
 function rejectPendingReport(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) {
+        return { success: false, message: 'Invalid phone number format' };
+    }
+    
     let pending = loadPending();
     pending = pending.filter(p => p.phoneNumber !== cleaned);
     savePending(pending);
@@ -236,7 +291,15 @@ function rejectPendingReport(phoneNumber) {
 
 // ========== REPORT A NUMBER ==========
 function reportNumber(phoneNumber, userId, reason) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) {
+        return { 
+            success: false, 
+            message: '❌ Invalid phone number format. Please use a valid Nigerian number like 08012345678 or +2348012345678',
+            status: 'invalid'
+        };
+    }
+    
     const isTrusted = isTrustedNumber(cleaned);
     const trustedInfo = isTrusted ? getTrustedNumberInfo(cleaned) : null;
     
@@ -354,7 +417,15 @@ function savePleas(data) {
 }
 
 function submitPlea(phoneNumber, userId, username, reason) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) {
+        return { 
+            success: false, 
+            message: '❌ Invalid phone number format. Please use a valid Nigerian number.',
+            status: 'invalid'
+        };
+    }
+    
     const scammers = loadScammers();
     
     // Check if number is actually a scammer
@@ -502,6 +573,9 @@ module.exports = {
     getAllScammers,
     getScammerCount,
     getRecentScammers,
+    
+    // Phone number normalization
+    normalizePhoneNumber,
     
     // Trusted numbers (real.json)
     isTrustedNumber,
