@@ -1,12 +1,15 @@
 // referrals.js - Complete Referral System Module
 // Handles: Referral tracking, leaderboard, share buttons, automated group posts
+// Supports: Telegram and Web App referrals
 
 const fs = require('fs');
+const path = require('path');
 
 // ========== CONFIGURATION ==========
 const REFERRALS_FILE = 'referrals.json';
 const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
 const BOT_USERNAME = "@JoshuaGiwaBot";
+const WEBAPP_URL = "https://detective-jai.onrender.com";
 const GROUP_ID = -1003513272328; // Your group ID
 
 // Leaderboard post times (Nigeria time)
@@ -47,27 +50,96 @@ function saveReferrals(data) {
     }
 }
 
+// ========== GENERATE REFERRAL LINKS ==========
+function getTelegramReferralLink(userId) {
+    return `https://t.me/JoshuaGiwaBot?start=ref_${userId}`;
+}
+
+function getWebReferralLink(userId) {
+    return `${WEBAPP_URL}/signup?ref=${userId}`;
+}
+
+function getReferralLink(userId) {
+    return getTelegramReferralLink(userId);
+}
+
+function getAllReferralLinks(userId) {
+    return {
+        telegram: getTelegramReferralLink(userId),
+        web: getWebReferralLink(userId)
+    };
+}
+
 // ========== TRACK A NEW REFERRAL ==========
-function trackReferral(referrerId, newUserId, newUsername) {
+function trackReferral(referrerId, newUserId, newUsername, platform = 'telegram') {
     const data = loadReferrals();
     
+    // Initialize referrer if not exists
     if (!data.users[referrerId]) {
         data.users[referrerId] = {
             name: '',
             invites: 0,
-            firstInvite: new Date().toISOString()
+            firstInvite: new Date().toISOString(),
+            platform: 'telegram'
         };
     }
     
+    // Set name if provided
     if (newUsername && !data.users[referrerId].name) {
         data.users[referrerId].name = newUsername.startsWith('@') ? newUsername : `@${newUsername}`;
     }
     
+    // Increment referral count
     data.users[referrerId].invites += 1;
     data.totalReferrals += 1;
     
+    // Track the referred user
+    data.users[newUserId] = {
+        name: newUsername || `User ${newUserId.slice(-4)}`,
+        invites: 0,
+        referredBy: referrerId,
+        registeredAt: new Date().toISOString(),
+        platform: platform
+    };
+    
     saveReferrals(data);
     console.log(`📊 Referral tracked: ${referrerId} invited ${newUserId} (Total: ${data.users[referrerId].invites})`);
+    
+    return {
+        success: true,
+        referrerInvites: data.users[referrerId].invites,
+        totalReferrals: data.totalReferrals
+    };
+}
+
+// ========== TRACK WEB REFERRAL ==========
+function trackWebReferral(referrerId, newUserId, newName, email) {
+    const data = loadReferrals();
+    
+    // Check if referrer exists
+    if (!data.users[referrerId]) {
+        return {
+            success: false,
+            error: 'Referrer not found'
+        };
+    }
+    
+    // Increment referrer count
+    data.users[referrerId].invites += 1;
+    data.totalReferrals += 1;
+    
+    // Track the new web user
+    data.users[newUserId] = {
+        name: newName || 'Web User',
+        invites: 0,
+        referredBy: referrerId,
+        email: email || null,
+        registeredAt: new Date().toISOString(),
+        platform: 'web'
+    };
+    
+    saveReferrals(data);
+    console.log(`🌐 Web referral tracked: ${referrerId} invited ${newUserId} (Total: ${data.users[referrerId].invites})`);
     
     return {
         success: true,
@@ -96,7 +168,9 @@ function getUserReferralStats(userId) {
     return {
         invites: userStats?.invites || 0,
         rank: getReferrerRank(userId),
-        totalReferrals: data.totalReferrals
+        totalReferrals: data.totalReferrals,
+        referredBy: userStats?.referredBy || null,
+        platform: userStats?.platform || 'unknown'
     };
 }
 
@@ -104,6 +178,7 @@ function getUserReferralStats(userId) {
 function getReferrerRank(userId) {
     const data = loadReferrals();
     const sorted = Object.entries(data.users)
+        .filter(([id, info]) => info.invites > 0)
         .sort((a, b) => b[1].invites - a[1].invites)
         .map(([id]) => id);
     
@@ -116,10 +191,12 @@ function getTopInviters(limit = 10) {
     const data = loadReferrals();
     
     const topUsers = Object.entries(data.users)
+        .filter(([id, info]) => info.invites > 0)
         .map(([id, info]) => ({
             userId: id,
             name: info.name || `User ${id.slice(-4)}`,
-            invites: info.invites
+            invites: info.invites,
+            platform: info.platform || 'unknown'
         }))
         .sort((a, b) => b.invites - a.invites)
         .slice(0, limit);
@@ -127,15 +204,11 @@ function getTopInviters(limit = 10) {
     return topUsers;
 }
 
-// ========== GENERATE REFERRAL LINK ==========
-function getReferralLink(userId) {
-    return `https://t.me/JoshuaGiwaBot?start=ref_${userId}`;
-}
-
 // ========== GENERATE SHARE BUTTONS ==========
 function getShareButtons(userId) {
     const referralLink = getReferralLink(userId);
-    const whatsappText = `🚨 *FREE SCAM DETECTOR* 🚨%0A%0ACheck any phone number or suspicious message before sending money.%0A%0A👉 Join here: ${referralLink}%0A%0A👥 Security group: ${COMMUNITY_LINK}`;
+    const webLink = getWebReferralLink(userId);
+    const whatsappText = `🚨 *FREE SCAM DETECTOR* 🚨%0A%0ACheck any phone number or suspicious message before sending money.%0A%0A👉 Join here: ${referralLink}%0A%0A🌐 Or use the web app: ${webLink}%0A%0A👥 Security group: ${COMMUNITY_LINK}`;
     
     return {
         inline_keyboard: [
@@ -145,7 +218,7 @@ function getShareButtons(userId) {
             ],
             [
                 { text: "🔗 Share on Telegram", url: `https://t.me/share/url?url=${referralLink}&text=🚨 Free scam detector bot! Check any phone number or suspicious message.` },
-                { text: "👥 Copy Group Link", callback_data: "copy_group" }
+                { text: "🌐 Web App Link", url: webLink }
             ],
             [
                 { text: "🏆 Leaderboard", callback_data: "show_leaderboard" },
@@ -158,7 +231,8 @@ function getShareButtons(userId) {
 // ========== GET SIMPLE SHARE BUTTONS (FOR /CHECK) ==========
 function getSimpleShareButtons(userId) {
     const referralLink = getReferralLink(userId);
-    const whatsappText = `🚨 *FREE SCAM DETECTOR* 🚨%0A%0ACheck any phone number or suspicious message before sending money.%0A%0A👉 Join here: ${referralLink}%0A%0A👥 Security group: ${COMMUNITY_LINK}`;
+    const webLink = getWebReferralLink(userId);
+    const whatsappText = `🚨 *FREE SCAM DETECTOR* 🚨%0A%0ACheck any phone number or suspicious message before sending money.%0A%0A👉 Join here: ${referralLink}%0A%0A🌐 Web app: ${webLink}%0A%0A👥 Security group: ${COMMUNITY_LINK}`;
     
     return {
         inline_keyboard: [
@@ -167,6 +241,7 @@ function getSimpleShareButtons(userId) {
                 { text: "📋 Copy Link", callback_data: `copy_ref_${userId}` }
             ],
             [
+                { text: "🌐 Web App", url: webLink },
                 { text: "🏆 Leaderboard", callback_data: "show_leaderboard" }
             ]
         ]
@@ -180,7 +255,7 @@ function getLeaderboardMessage() {
     
     if (topUsers.length === 0 || data.totalReferrals === 0) {
         return {
-            message: `🏆 *LEADERBOARD* 🏆\n\nNo referrals yet. Be the first to invite friends!\n\nShare your referral link using /referral or /check.\n\n👑 Top inviters will be recognized here.`,
+            message: `🏆 *LEADERBOARD* 🏆\n\nNo referrals yet. Be the first to invite friends!\n\nShare your referral link using /referral or /check.\n\n🌐 Web app: ${WEBAPP_URL}\n\n👑 Top inviters will be recognized here.`,
             hasData: false
         };
     }
@@ -191,10 +266,11 @@ function getLeaderboardMessage() {
     for (let i = 0; i < topUsers.length; i++) {
         const user = topUsers[i];
         const medal = i === 0 ? "👑" : (i === 1 ? "🥈" : (i === 2 ? "🥉" : `${i+1}.`));
-        message += `${medal} *${user.name}* — ${user.invites} invite${user.invites !== 1 ? 's' : ''}\n`;
+        const platformIcon = user.platform === 'web' ? '🌐' : '📱';
+        message += `${medal} *${user.name}* ${platformIcon} — ${user.invites} invite${user.invites !== 1 ? 's' : ''}\n`;
     }
     
-    message += `\n🤝 Share your referral link to climb the leaderboard!\nType /referral to get your link.`;
+    message += `\n🤝 Share your referral link to climb the leaderboard!\nType /referral to get your link.\n\n🌐 Web app: ${WEBAPP_URL}`;
     
     return { message, hasData: true };
 }
@@ -206,7 +282,7 @@ function getLeaderboardForGroup() {
     
     if (topUsers.length === 0 || data.totalReferrals === 0) {
         return {
-            message: `🏆 *LEADERBOARD UPDATE* 🏆\n\nNo referrals yet. Be the first to invite friends!\n\nShare your referral link using /referral.\n\n👑 Top inviters will be recognized here.\n\n👉 @JoshuaGiwaBot`,
+            message: `🏆 *LEADERBOARD UPDATE* 🏆\n\nNo referrals yet. Be the first to invite friends!\n\nShare your referral link using /referral.\n\n🌐 Web app: ${WEBAPP_URL}\n\n👑 Top inviters will be recognized here.\n\n👉 @JoshuaGiwaBot`,
             hasData: false
         };
     }
@@ -217,14 +293,15 @@ function getLeaderboardForGroup() {
     for (let i = 0; i < Math.min(5, topUsers.length); i++) {
         const user = topUsers[i];
         const medal = i === 0 ? "👑" : (i === 1 ? "🥈" : (i === 2 ? "🥉" : `${i+1}.`));
-        message += `${medal} *${user.name}* — ${user.invites} invite${user.invites !== 1 ? 's' : ''}\n`;
+        const platformIcon = user.platform === 'web' ? '🌐' : '📱';
+        message += `${medal} *${user.name}* ${platformIcon} — ${user.invites} invite${user.invites !== 1 ? 's' : ''}\n`;
     }
     
     if (topUsers.length > 5) {
         message += `\n...and ${topUsers.length - 5} more. Type /leaderboard to see full list.\n`;
     }
     
-    message += `\n🤝 Invite friends to climb the leaderboard!\nGet your link: /referral\n\n🛡️ Protect others from scams: @JoshuaGiwaBot`;
+    message += `\n🤝 Invite friends to climb the leaderboard!\nGet your link: /referral\n\n🛡️ Protect others from scams: @JoshuaGiwaBot\n🌐 Web app: ${WEBAPP_URL}`;
     
     return { message, hasData: true };
 }
@@ -233,15 +310,24 @@ function getLeaderboardForGroup() {
 function getUserStatsMessage(userId, username) {
     const stats = getUserReferralStats(userId);
     const referralLink = getReferralLink(userId);
+    const webLink = getWebReferralLink(userId);
     const rankText = stats.rank ? `#${stats.rank}` : 'Not ranked yet';
+    const platformIcon = stats.platform === 'web' ? '🌐' : '📱';
     
     let message = `📊 *YOUR REFERRAL STATS*\n\n`;
-    message += `👤 *${username || 'You'}*\n`;
+    message += `👤 *${username || 'You'}* ${platformIcon}\n`;
     message += `📨 People you invited: *${stats.invites}*\n`;
     message += `🏆 Your rank: *${rankText}*\n`;
     message += `📊 Total referrals in group: *${stats.totalReferrals}*\n\n`;
-    message += `*Your referral link:*\n\`${referralLink}\`\n\n`;
-    message += `Share this link. When friends join, you get credit!\n`;
+    
+    if (stats.referredBy) {
+        message += `🔗 You were referred by: *${stats.referredBy}*\n\n`;
+    }
+    
+    message += `*Your referral links:*\n`;
+    message += `📱 Telegram: \`${referralLink}\`\n`;
+    message += `🌐 Web App: \`${webLink}\`\n\n`;
+    message += `Share these links. When friends join, you get credit!\n`;
     message += `👑 Top inviters get recognized in the group.`;
     
     return message;
@@ -250,7 +336,8 @@ function getUserStatsMessage(userId, username) {
 // ========== ADD REFERRAL SECTION TO CHECK RESULT ==========
 function addReferralSectionToCheck(resultText, userId, riskScore) {
     const referralLink = getReferralLink(userId);
-    const whatsappText = `🚨 *FREE SCAM DETECTOR* 🚨%0A%0ACheck any phone number or suspicious message before sending money.%0A%0A👉 Join here: ${referralLink}%0A%0A👥 Security group: ${COMMUNITY_LINK}`;
+    const webLink = getWebReferralLink(userId);
+    const whatsappText = `🚨 *FREE SCAM DETECTOR* 🚨%0A%0ACheck any phone number or suspicious message before sending money.%0A%0A👉 Join here: ${referralLink}%0A%0A🌐 Web app: ${webLink}%0A%0A👥 Security group: ${COMMUNITY_LINK}`;
     
     const referralSection = `
 🤝 *HELP OTHERS STAY SAFE*
@@ -267,7 +354,10 @@ Share this bot with friends and family.
                 { text: "📋 Copy Link", callback_data: `copy_ref_${userId}` }
             ],
             [
-                { text: "🏆 Leaderboard", callback_data: "show_leaderboard" },
+                { text: "🌐 Web App", url: webLink },
+                { text: "🏆 Leaderboard", callback_data: "show_leaderboard" }
+            ],
+            [
                 { text: "📊 My Stats", callback_data: `my_stats_${userId}` }
             ]
         ]
@@ -279,9 +369,9 @@ Share this bot with friends and family.
     };
 }
 
-// ========== HANDLE REFERRAL START ==========
+// ========== HANDLE REFERRAL START (Telegram) ==========
 async function handleReferralStart(ctx, referrerId, newUserId, newUsername) {
-    const result = trackReferral(referrerId, newUserId, newUsername);
+    const result = trackReferral(referrerId, newUserId, newUsername, 'telegram');
     
     const welcomeMessage = `
 🎉 *WELCOME!* 🎉
@@ -293,6 +383,7 @@ You now have access to:
 ✅ Suspicious message analyzer
 ✅ Screenshot scam detection
 ✅ Link checker
+✅ Web app: ${WEBAPP_URL}
 
 *Start with:* /check 08012345678
 
@@ -312,11 +403,35 @@ You now have access to:
 
 Keep sharing your link: /referral
 
+🌐 Web app: ${WEBAPP_URL}
+
 👑 Check the leaderboard: /leaderboard
         `, { parse_mode: 'Markdown' });
     } catch (err) {
         console.log(`Could not notify referrer ${referrerId}: ${err.message}`);
     }
+    
+    return result;
+}
+
+// ========== HANDLE WEB REFERRAL ==========
+function handleWebReferral(req, res) {
+    const { ref } = req.query;
+    const { fullName, email, userId } = req.body;
+    
+    // Check if referrer exists
+    const data = loadReferrals();
+    const referrerExists = data.users[ref];
+    
+    if (!ref || !referrerExists) {
+        return {
+            success: false,
+            error: 'Invalid or missing referral code'
+        };
+    }
+    
+    // Track the web referral
+    const result = trackWebReferral(ref, userId, fullName, email);
     
     return result;
 }
@@ -329,6 +444,7 @@ async function postLeaderboardToGroup(bot) {
         const buttons = {
             inline_keyboard: [
                 [{ text: "🤝 Get Your Referral Link", url: "https://t.me/JoshuaGiwaBot?start=referral" }],
+                [{ text: "🌐 Web App", url: WEBAPP_URL }],
                 [{ text: "🏆 View Full Leaderboard", callback_data: "show_leaderboard" }]
             ]
         };
@@ -389,14 +505,17 @@ async function handleReferralCommand(ctx) {
     const username = ctx.from.username || ctx.from.first_name;
     const stats = getUserReferralStats(userId);
     const referralLink = getReferralLink(userId);
+    const webLink = getWebReferralLink(userId);
     const buttons = getShareButtons(userId);
     
-    let message = `🤝 *YOUR REFERRAL LINK*\n\n`;
+    let message = `🤝 *YOUR REFERRAL LINKS*\n\n`;
     message += `👥 People you've invited: *${stats.invites}*\n`;
     message += `🏆 Your rank: *${stats.rank ? `#${stats.rank}` : 'Not ranked'}*\n`;
     message += `📊 Total referrals: *${stats.totalReferrals}*\n\n`;
-    message += `*Your unique link:*\n\`${referralLink}\`\n\n`;
-    message += `Share this link. When friends join, you get credit!\n`;
+    message += `*Your links:*\n`;
+    message += `📱 Telegram: \`${referralLink}\`\n`;
+    message += `🌐 Web App: \`${webLink}\`\n\n`;
+    message += `Share these links. When friends join, you get credit!\n`;
     message += `👑 Top inviters are recognized in the group.\n\n`;
     message += `👇 *SHARE NOW*`;
     
@@ -412,7 +531,8 @@ async function handleLeaderboardCommand(ctx) {
     const buttons = {
         inline_keyboard: [
             [{ text: "📊 My Stats", callback_data: `my_stats_${ctx.from.id}` }],
-            [{ text: "🤝 Get My Referral Link", callback_data: "get_referral_link" }]
+            [{ text: "🤝 Get My Referral Link", callback_data: "get_referral_link" }],
+            [{ text: "🌐 Web App", url: WEBAPP_URL }]
         ]
     };
     
@@ -447,7 +567,8 @@ async function handleReferralCallback(ctx) {
             reply_markup: hasData ? {
                 inline_keyboard: [
                     [{ text: "📊 My Stats", callback_data: `my_stats_${userId}` }],
-                    [{ text: "🤝 Get My Link", callback_data: "get_referral_link" }]
+                    [{ text: "🤝 Get My Link", callback_data: "get_referral_link" }],
+                    [{ text: "🌐 Web App", url: WEBAPP_URL }]
                 ]
             } : null
         });
@@ -456,9 +577,10 @@ async function handleReferralCallback(ctx) {
     
     if (data === "get_referral_link") {
         const referralLink = getReferralLink(userId);
+        const webLink = getWebReferralLink(userId);
         const buttons = getShareButtons(userId);
         await ctx.answerCbQuery();
-        await ctx.editMessageText(`🤝 *Your Referral Link*\n\n\`${referralLink}\`\n\nShare this link with friends!\n\n👇 *SHARE NOW*`, {
+        await ctx.editMessageText(`🤝 *Your Referral Links*\n\n📱 Telegram: \`${referralLink}\`\n🌐 Web App: \`${webLink}\`\n\nShare these links with friends!\n\n👇 *SHARE NOW*`, {
             parse_mode: 'Markdown',
             reply_markup: buttons
         });
@@ -481,8 +603,9 @@ async function handleReferralCallback(ctx) {
     if (data.startsWith("copy_ref_")) {
         const targetUserId = data.split("_")[2];
         const referralLink = getReferralLink(targetUserId);
-        await ctx.answerCbQuery(`Link copied! Share it with friends.`, { show_alert: false });
-        await ctx.reply(`✅ *Referral link copied!*\n\nShare:\n\`${referralLink}\``, { parse_mode: 'Markdown' });
+        const webLink = getWebReferralLink(targetUserId);
+        await ctx.answerCbQuery(`Links copied! Share them with friends.`, { show_alert: false });
+        await ctx.reply(`✅ *Referral links copied!*\n\nShare:\n📱 \`${referralLink}\`\n🌐 \`${webLink}\``, { parse_mode: 'Markdown' });
         return;
     }
     
@@ -499,10 +622,14 @@ module.exports = {
     loadReferrals,
     saveReferrals,
     trackReferral,
+    trackWebReferral,
     updateReferrerName,
     getUserReferralStats,
     getTopInviters,
     getReferralLink,
+    getTelegramReferralLink,
+    getWebReferralLink,
+    getAllReferralLinks,
     
     // Message formatters
     getLeaderboardMessage,
@@ -521,6 +648,7 @@ module.exports = {
     handleLeaderboardCommand,
     handleMyReferralsCommand,
     handleReferralStart,
+    handleWebReferral,
     
     // Callback handlers
     handleReferralCallback
