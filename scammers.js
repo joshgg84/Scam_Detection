@@ -18,7 +18,9 @@ function loadTrustedNumbers() {
             const data = JSON.parse(fs.readFileSync(REAL_FILE, 'utf8'));
             return data.numbers || [];
         }
-    } catch (err) {}
+    } catch (err) {
+        console.error('Error loading real.json:', err);
+    }
     return [];
 }
 
@@ -34,7 +36,20 @@ function isTrustedNumber(phoneNumber) {
 function getTrustedNumberInfo(phoneNumber) {
     const cleaned = phoneNumber.toString().replace(/\D/g, '');
     const trusted = loadTrustedNumbers();
-    return trusted.find(item => item.phone.toString().replace(/\D/g, '') === cleaned);
+    return trusted.find(item => {
+        const itemCleaned = item.phone.toString().replace(/\D/g, '');
+        return itemCleaned === cleaned;
+    }) || null;
+}
+
+function searchTrustedNumbers(query) {
+    const trusted = loadTrustedNumbers();
+    const lowerQuery = query.toLowerCase();
+    return trusted.filter(item => {
+        const phoneMatch = item.phone && item.phone.includes(query);
+        const nameMatch = item.name && item.name.toLowerCase().includes(lowerQuery);
+        return phoneMatch || nameMatch;
+    });
 }
 
 function addToTrustedList(phoneNumber, name, addedBy = 'admin') {
@@ -185,7 +200,7 @@ function getRecentScammers(limit = 10) {
     return scammers.slice(-limit).reverse();
 }
 
-// ========== GET PENDING REPORTS (for admin) ==========
+// ========== GET PENDING REPORTS ==========
 function getPendingReports() {
     return loadPending();
 }
@@ -488,9 +503,10 @@ module.exports = {
     getScammerCount,
     getRecentScammers,
     
-    // Trusted numbers
+    // Trusted numbers (real.json)
     isTrustedNumber,
     getTrustedNumberInfo,
+    searchTrustedNumbers,
     addToTrustedList,
     removeFromTrustedList,
     listTrustedNumbers,
