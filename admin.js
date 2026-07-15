@@ -7,6 +7,7 @@ const { dailyTips } = require('./tips.js');
 
 // Import scammers module for admin functions
 const scammersModule = require('./scammers.js');
+const { normalizePhoneNumber } = require('./detection.js');
 
 // ========== STORAGE FILES FOR DOWNLOAD ==========
 const STORAGE_FILES = [
@@ -106,11 +107,18 @@ function registerTrustedNumberCommands(bot, YOUR_ID) {
         const name = args.slice(2).join(' ') || 'Unknown';
         
         if (!phoneNumber) {
-            ctx.reply('📞 *Usage:* `/addtrusted 08012345678 Name of business`\n\nExample: `/addtrusted 08012345678 GTBank Customer Care`', { parse_mode: 'Markdown' });
+            ctx.reply('📞 *Usage:* `/addtrusted 08012345678 Name of business`\n\nExample: `/addtrusted 08012345678 GTBank Customer Care`\n\nAccepted formats: 08012345678, +2348012345678, +234 703 193 9715', { parse_mode: 'Markdown' });
             return;
         }
         
-        const result = scammersModule.addToTrustedList(phoneNumber, name, ctx.from.username || 'admin');
+        // Normalize the phone number
+        const cleaned = normalizePhoneNumber(phoneNumber);
+        if (!cleaned) {
+            ctx.reply('❌ Invalid phone number format.\n\nAccepted formats:\n• 08012345678\n• +2348012345678\n• +234 703 193 9715', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.addToTrustedList(cleaned, name, ctx.from.username || 'admin');
         ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
     });
     
@@ -124,11 +132,18 @@ function registerTrustedNumberCommands(bot, YOUR_ID) {
         const phoneNumber = args[1];
         
         if (!phoneNumber) {
-            ctx.reply('📞 *Usage:* `/removetrusted 08012345678`\n\nRemoves a number from the trusted list.', { parse_mode: 'Markdown' });
+            ctx.reply('📞 *Usage:* `/removetrusted 08012345678`\n\nRemoves a number from the trusted list.\n\nAccepted formats: 08012345678, +2348012345678', { parse_mode: 'Markdown' });
             return;
         }
         
-        const result = scammersModule.removeFromTrustedList(phoneNumber);
+        // Normalize the phone number
+        const cleaned = normalizePhoneNumber(phoneNumber);
+        if (!cleaned) {
+            ctx.reply('❌ Invalid phone number format.\n\nAccepted formats:\n• 08012345678\n• +2348012345678', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.removeFromTrustedList(cleaned);
         ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
     });
     
@@ -212,7 +227,14 @@ function registerPendingReportsCommands(bot, YOUR_ID) {
             return;
         }
         
-        const result = scammersModule.manuallyVerifyScammer(phoneNumber);
+        // Normalize the phone number
+        const cleaned = normalizePhoneNumber(phoneNumber);
+        if (!cleaned) {
+            ctx.reply('❌ Invalid phone number format.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.manuallyVerifyScammer(cleaned);
         ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
     });
     
@@ -230,7 +252,14 @@ function registerPendingReportsCommands(bot, YOUR_ID) {
             return;
         }
         
-        const result = scammersModule.rejectPendingReport(phoneNumber);
+        // Normalize the phone number
+        const cleaned = normalizePhoneNumber(phoneNumber);
+        if (!cleaned) {
+            ctx.reply('❌ Invalid phone number format.', { parse_mode: 'Markdown' });
+            return;
+        }
+        
+        const result = scammersModule.rejectPendingReport(cleaned);
         ctx.reply(result.success ? `✅ ${result.message}` : `❌ ${result.message}`, { parse_mode: 'Markdown' });
     });
     
