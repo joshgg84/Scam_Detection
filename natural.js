@@ -9,6 +9,9 @@ const { getScammerCount, getAllScammers, reportNumber, isScammer } = require('./
 const fs = require('fs');
 const path = require('path');
 
+// Import normalizePhoneNumber from detection.js
+const { normalizePhoneNumber } = require('./detection.js');
+
 // ============================================
 // LANGUAGE DETECTION
 // ============================================
@@ -98,16 +101,24 @@ function getSponsorMessage() {
 // ============================================
 
 function handleCheckNumber(phoneNumber) {
-    if (!phoneNumber || !phoneNumber.match(/0[789][01]\d{8}/)) {
-        return `📞 *Check Phone Number*\n\nType a valid Nigerian phone number like 08012345678.`;
+    // phoneNumber should already be normalized
+    if (!phoneNumber) {
+        return `📞 *Check Phone Number*\n\nType a valid Nigerian phone number like 08012345678 or +234 703 193 9715.`;
     }
     
-    const cleaned = phoneNumber.replace(/\D/g, '');
-    const reported = isScammer(cleaned);
+    const result = detection.checkNumberWithName(phoneNumber);
+    if (!result.success) {
+        return `📞 *Check Phone Number*\n\n${result.error}`;
+    }
     
-    let response = reported 
-        ? `🚨 *ALERT!*\n${phoneNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money\n❌ Block immediately`
-        : `✅ *CLEAR*\n${phoneNumber} has no reports.\n\n⚠️ Still be cautious.`;
+    let response = '';
+    if (result.isScammer) {
+        response = `🚨 *ALERT!*\n${result.phoneNumber} is a REPORTED SCAMMER!\n\n❌ Do not send money\n❌ Block immediately`;
+    } else if (result.isTrusted) {
+        response = `✅ *TRUSTED NUMBER*\n${result.phoneNumber} - ${result.trustedName}\n\n⚠️ This is a known trusted number. Still be cautious if misused.`;
+    } else {
+        response = `✅ *CLEAR*\n${result.phoneNumber} has no reports.\n\n⚠️ Still be cautious.`;
+    }
     
     // Add partner support message
     const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
@@ -154,31 +165,31 @@ function handleCheckLink(url) {
 }
 
 function handleReport(phoneNumber, userId, username) {
-    if (!phoneNumber || !phoneNumber.match(/0[789][01]\d{8}/)) {
+    // phoneNumber should already be normalized
+    if (!phoneNumber) {
         return `📢 *Report Scammer*\n\nType the phone number to report.\n\nExample: "report 08012345678 fake loan scam"`;
     }
     
-    const cleaned = phoneNumber.replace(/\D/g, '');
     const reason = 'Reported via natural language';
-    const result = reportNumber(cleaned, userId || 'web_user', reason);
+    const result = reportNumber(phoneNumber, userId || 'web_user', reason);
     
     return result.message;
 }
 
 function handlePlea(phoneNumber, userId, username) {
-    if (!phoneNumber || !phoneNumber.match(/0[789][01]\d{8}/)) {
+    // phoneNumber should already be normalized
+    if (!phoneNumber) {
         return `📝 *Plea Command*\n\nIf your number was wrongly flagged as a scammer, send me the number.\n\nExample: "plea 08012345678 I am a legitimate business"`;
     }
     
-    const cleaned = phoneNumber.replace(/\D/g, '');
     // Check if number is actually a scammer
-    if (!isScammer(cleaned)) {
-        return `✅ ${cleaned} is not in the scammers database. No plea needed.`;
+    if (!isScammer(phoneNumber)) {
+        return `✅ ${phoneNumber} is not in the scammers database. No plea needed.`;
     }
     
     // This would call the actual plea function from scammers.js
     // For now, return a message
-    return `📋 *Plea Submitted*\n\nYour plea for ${cleaned} has been submitted. Admin will review it.\n\nYou will be notified when a decision is made.`;
+    return `📋 *Plea Submitted*\n\nYour plea for ${phoneNumber} has been submitted. Admin will review it.\n\nYou will be notified when a decision is made.`;
 }
 
 function handleLoan(amount) {
@@ -304,17 +315,20 @@ function processNaturalInput(text, userId, username) {
     
     // ========== CHECK FOR COMMANDS ==========
     
-    // Check number
-    const numberMatch = text.match(/\b(0[789]\d{9})\b/);
+    // Check number - accepts +234 703 193 9715, 08012345678, etc.
+    const numberMatch = text.match(/(\+234[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{4}|0[789][01]\d{8})/);
     if (numberMatch) {
-        const number = numberMatch[0];
-        if (lower.includes('report') || lower.includes('i want to report')) {
-            return handleReport(number, userId, username);
+        const rawNumber = numberMatch[0];
+        const cleaned = normalizePhoneNumber(rawNumber);
+        if (cleaned) {
+            if (lower.includes('report') || lower.includes('i want to report')) {
+                return handleReport(cleaned, userId, username);
+            }
+            if (lower.includes('appeal') || lower.includes('plea')) {
+                return handlePlea(cleaned, userId, username);
+            }
+            return handleCheckNumber(cleaned);
         }
-        if (lower.includes('appeal') || lower.includes('plea')) {
-            return handlePlea(number, userId, username);
-        }
-        return handleCheckNumber(number);
     }
 
     // Check link
