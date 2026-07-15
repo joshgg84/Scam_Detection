@@ -1,4 +1,4 @@
-// bot.js - Telegram Bot with LAZY LOADING + Health Check
+// bot.js - Telegram Bot with LAZY LOADING + Health Check + Admin Guard
 // Detective Jai - Nigeria Scam Detector Bot
 
 const { Telegraf } = require('telegraf');
@@ -52,12 +52,55 @@ if (!BOT_TOKEN) {
 console.log('✅ BOT_TOKEN loaded (length:', BOT_TOKEN.length, ')');
 
 const bot = new Telegraf(BOT_TOKEN);
-const YOUR_ID = 8447414897;
+const YOUR_ID = 8447414897; // Your personal Telegram ID
 const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
 const GROUP_ID = -1003513272328;
 
 // Store users who want to give testimonial
 let awaitingTestimonial = {};
+
+// ========== ADMIN CONFIGURATION ==========
+// List of admin-only commands
+const ADMIN_COMMANDS = [
+    'listscammers', 'scammers', 'recent', 'download',
+    'addtrusted', 'removetrusted', 'listtrusted',
+    'pleas', 'approveplea', 'rejectplea', 'allpleas',
+    'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats',
+    'userstats', 'userreports', 'testtip', 'adminhelp'
+];
+
+// ========== ADMIN GUARD MIDDLEWARE ==========
+// This runs BEFORE any command to check admin access
+bot.use(async (ctx, next) => {
+    const msg = ctx.message?.text;
+    if (msg && msg.startsWith('/')) {
+        const cmd = msg.split(' ')[0].slice(1).toLowerCase();
+        
+        // Check if this is an admin command
+        if (ADMIN_COMMANDS.includes(cmd)) {
+            // Check if the user is the admin
+            if (ctx.from.id !== YOUR_ID) {
+                return ctx.reply(
+                    '🚫 *Access Denied*\n\nThis command is restricted to the bot owner.\n\n' +
+                    'If you need help, please contact @JoshuaGiwa.',
+                    { parse_mode: 'Markdown' }
+                );
+            }
+            
+            // User IS the admin - lazy load and register admin commands
+            const modules = lazyLoadModules();
+            modules.admin.registerAdminCommands(
+                bot, 
+                YOUR_ID, 
+                modules.partnerSystem, 
+                modules.tips.dailyTips, 
+                modules.detection.scamTerms, 
+                modules.linkModule
+            );
+        }
+    }
+    return next();
+});
 
 // ========== VALID COMMANDS ==========
 const validCommands = [
@@ -467,11 +510,49 @@ bot.command('stats', (ctx) => {
     ctx.reply(`📊 *STATS*\nScammers: ${modules.scammers.getScammerCount()}\nPartners: ${modules.partnerSystem.getPartnersCount()}\nTips: ${modules.tips.dailyTips.length}\nTerms: ${Object.keys(modules.detection.scamTerms).length}`, { parse_mode: 'Markdown' });
 });
 
-// ========== REGISTER ADMIN COMMANDS ==========
+// ========== ADMIN HELP COMMAND ==========
 bot.command('adminhelp', async (ctx) => {
-    const modules = lazyLoadModules();
-    if (ctx.from.id !== YOUR_ID) return ctx.reply('❌ Admin only.');
-    // Admin commands will be registered
+    // Guard is handled by middleware, but double-check
+    if (ctx.from.id !== YOUR_ID) {
+        return ctx.reply('🚫 *Access Denied*', { parse_mode: 'Markdown' });
+    }
+    
+    ctx.reply(`
+👑 *ADMIN COMMANDS*
+
+*Scammer Management:*
+/listscammers - List all scammers
+/scammers - Alias for listscammers
+/recent - Show recent reports
+/download - Download scammers database
+
+*Trusted Numbers:*
+/addtrusted [number] [name] - Add trusted number
+/removetrusted [number] - Remove trusted number
+/listtrusted - List all trusted numbers
+
+*Plea Management:*
+/pleas - View pending pleas
+/approveplea [id] - Approve a plea
+/rejectplea [id] [reason] - Reject a plea
+/allpleas - View all pleas
+
+*Link Management:*
+/listlinks - List reported scam links
+/deletelink [id] - Delete a scam link
+/addwhitelist [url] - Add to whitelist
+/removewhitelist [url] - Remove from whitelist
+/linkstats - Link statistics
+
+*User Management:*
+/userstats [id] - View user stats
+/userreports [id] - View user's reports
+
+*Other:*
+/testtip - Send test tip to group
+
+👥 ${COMMUNITY_LINK}
+    `, { parse_mode: 'Markdown' });
 });
 
 // ========== MEDIA HANDLERS ==========
@@ -729,6 +810,7 @@ bot.launch()
         console.log('========================================');
         console.log('✅ DETECTIVE JAI TELEGRAM BOT IS LIVE!');
         console.log('🤖 Bot is ready to receive messages!');
+        console.log('👑 Admin: @JoshuaGiwa (ID: ' + YOUR_ID + ')');
         console.log('========================================');
     })
     .catch(err => {
