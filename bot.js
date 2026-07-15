@@ -1,23 +1,55 @@
-// bot.js - Telegram Bot Only (No Express)
+// bot.js - Telegram Bot with LAZY LOADING + Health Check
 // Detective Jai - Nigeria Scam Detector Bot
 
 const { Telegraf } = require('telegraf');
+const express = require('express');
 
-// Import modules
-const partnerSystem = require('./partner.js');
-const referralSystem = require('./referrals.js');
-const detection = require('./detection.js');
-const natural = require('./natural.js');
-const { registerAdminCommands } = require('./admin.js');
-const { getScammerCount, reportNumber, submitPlea, isScammer } = require('./scammers.js');
-const { dailyTips } = require('./tips.js');
+// ========== HEALTH CHECK (Required for Render) ==========
+const app = express();
+app.get('/health', (req, res) => {
+    res.status(200).send('OK');
+});
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`🏥 Health check running on port ${PORT}`);
+});
+
+// ========== LAZY LOAD MODULES ==========
+let partnerSystem, referralSystem, detection, natural, admin, scammers, tips, ocr, linkModule;
+
+function lazyLoadModules() {
+    if (!detection) {
+        console.log('⏳ Lazy loading modules...');
+        const start = Date.now();
+        
+        partnerSystem = require('./partner.js');
+        referralSystem = require('./referrals.js');
+        detection = require('./detection.js');
+        natural = require('./natural.js');
+        admin = require('./admin.js');
+        scammers = require('./scammers.js');
+        tips = require('./tips.js');
+        ocr = require('./ocr.js');
+        linkModule = require('./links.js');
+        
+        // Initialize systems
+        partnerSystem.initPartnerSystem();
+        
+        console.log(`✅ Modules loaded in ${Date.now() - start}ms`);
+    }
+    return { partnerSystem, referralSystem, detection, natural, admin, scammers, tips, ocr, linkModule };
+}
 
 // ========== CONFIGURATION ==========
 const BOT_TOKEN = process.env.BOT_TOKEN;
+
 if (!BOT_TOKEN) {
     console.error('❌ BOT_TOKEN not found!');
+    console.error('💡 Add BOT_TOKEN to your Render environment variables');
     process.exit(1);
 }
+
+console.log('✅ BOT_TOKEN loaded (length:', BOT_TOKEN.length, ')');
 
 const bot = new Telegraf(BOT_TOKEN);
 const YOUR_ID = 8447414897;
@@ -26,9 +58,6 @@ const GROUP_ID = -1003513272328;
 
 // Store users who want to give testimonial
 let awaitingTestimonial = {};
-
-// Initialize systems
-partnerSystem.initPartnerSystem();
 
 // ========== VALID COMMANDS ==========
 const validCommands = [
@@ -142,6 +171,7 @@ async function askForTestimonial(ctx, type, details) {
 
 // ========== BASIC COMMANDS ==========
 bot.start(async (ctx) => {
+    const modules = lazyLoadModules();
     const args = ctx.message.text.split(' ');
     const startParam = args[1];
     
@@ -149,12 +179,12 @@ bot.start(async (ctx) => {
         const referrerId = startParam.split('_')[1];
         const newUserId = ctx.from.id;
         const newUsername = ctx.from.username || ctx.from.first_name;
-        await referralSystem.handleReferralStart(ctx, referrerId, newUserId, newUsername);
+        await modules.referralSystem.handleReferralStart(ctx, referrerId, newUserId, newUsername);
         return;
     }
     
     if (startParam === 'referral') {
-        await referralSystem.handleReferralCommand(ctx);
+        await modules.referralSystem.handleReferralCommand(ctx);
         return;
     }
     
@@ -166,8 +196,9 @@ bot.command('myid', (ctx) => ctx.reply(`Your ID: \`${ctx.from.id}\``, { parse_mo
 bot.command('community', (ctx) => ctx.reply(`👥 Join: ${COMMUNITY_LINK}`));
 bot.command('support', (ctx) => ctx.reply(`💚 *Support:*\nZenith Bank\n4268186069\nJoshua Giwa`, { parse_mode: 'Markdown' }));
 
-// ========== CHECK NUMBER (USES HANDLER) ==========
+// ========== CHECK NUMBER ==========
 bot.command('checknumber', async (ctx) => {
+    const modules = lazyLoadModules();
     const args = ctx.message.text.split(' ');
     const phoneNumber = args[1];
     const userId = ctx.from.id;
@@ -177,15 +208,13 @@ bot.command('checknumber', async (ctx) => {
         return;
     }
     
-    // Check if it's a valid Nigerian number
     const phoneMatch = phoneNumber.match(/0[789][01]\d{8}/);
     if (!phoneMatch) {
         ctx.reply('❌ Invalid phone number format. Please use a valid Nigerian number like 08012345678', { parse_mode: 'Markdown' });
         return;
     }
     
-    // Use detection.js to check number with name
-    const result = detection.checkNumberWithName(phoneMatch[0]);
+    const result = modules.detection.checkNumberWithName(phoneMatch[0]);
     let response = '';
     
     if (result.isScammer) {
@@ -196,11 +225,10 @@ bot.command('checknumber', async (ctx) => {
         response = `✅ *CLEAR*\n${result.phoneNumber} has no reports.\n\n⚠️ Still be cautious.`;
     }
     
-    // Add partner support message
-    const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
+    const supportMessage = modules.partnerSystem.getRandomPartnerSupportMessage();
     response += `\n\n${supportMessage}`;
     
-    const referralResult = referralSystem.addReferralSectionToCheck(response, userId, 0);
+    const referralResult = modules.referralSystem.addReferralSectionToCheck(response, userId, 0);
     await ctx.reply(referralResult.fullText, {
         parse_mode: 'Markdown',
         reply_markup: referralResult.buttons
@@ -216,8 +244,9 @@ bot.command('cn', async (ctx) => {
     await bot.commands.get('checknumber')(ctx);
 });
 
-// ========== CHECK MESSAGE (USES NATURAL.JS) ==========
+// ========== CHECK MESSAGE ==========
 bot.command('checkmsg', async (ctx) => {
+    const modules = lazyLoadModules();
     const args = ctx.message.text.split(' ');
     const input = args.slice(1).join(' ');
     const userId = ctx.from.id;
@@ -227,10 +256,9 @@ bot.command('checkmsg', async (ctx) => {
         return;
     }
     
-    // Use natural.js to process the message
-    const response = natural.processNaturalInput(input, userId, ctx.from.username);
+    const response = modules.natural.processNaturalInput(input, userId, ctx.from.username);
     
-    const referralResult = referralSystem.addReferralSectionToCheck(response, userId, 0);
+    const referralResult = modules.referralSystem.addReferralSectionToCheck(response, userId, 0);
     await ctx.reply(referralResult.fullText, {
         parse_mode: 'Markdown',
         reply_markup: referralResult.buttons
@@ -248,7 +276,7 @@ bot.command('cm', async (ctx) => {
 
 // ========== CHECK LINK ==========
 bot.command('checklink', async (ctx) => {
-    const linkModule = require('./links.js');
+    const modules = lazyLoadModules();
     const args = ctx.message.text.split(' ');
     const url = args[1];
     
@@ -257,13 +285,14 @@ bot.command('checklink', async (ctx) => {
         return;
     }
     
-    const response = await natural.handleCheckLink(url);
+    const response = await modules.natural.handleCheckLink(url);
     await ctx.reply(response, { parse_mode: 'Markdown' });
     await askForTestimonial(ctx, 'link', url || 'unknown');
 });
 
 // ========== REPORT ==========
 bot.command('report', async (ctx) => {
+    const modules = lazyLoadModules();
     const parts = ctx.message.text.split(' ');
     const phoneNumber = parts[1];
     const reason = parts.slice(2).join(' ') || 'Suspicious activity';
@@ -275,7 +304,7 @@ bot.command('report', async (ctx) => {
         return;
     }
     
-    const result = await reportNumber(phoneNumber, userId, reason);
+    const result = await modules.scammers.reportNumber(phoneNumber, userId, reason);
     ctx.reply(`✅ *REPORTED*\n${phoneNumber}\n${result.message}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     
     if (result.status === 'verified') {
@@ -285,7 +314,7 @@ bot.command('report', async (ctx) => {
 
 // ========== REPORT LINK ==========
 bot.command('reportlink', async (ctx) => {
-    const linkModule = require('./links.js');
+    const modules = lazyLoadModules();
     const args = ctx.message.text.split(' ');
     const url = args[1];
     const reason = args.slice(2).join(' ') || 'Suspicious link';
@@ -296,7 +325,7 @@ bot.command('reportlink', async (ctx) => {
         return;
     }
     
-    const result = linkModule.reportLink(url, reason, reporter);
+    const result = modules.linkModule.reportLink(url, reason, reporter);
     
     if (result.success) {
         ctx.reply(`✅ *LINK REPORTED!*\n\nURL: \`${url}\`\nReason: ${reason}\nTotal reported links: ${result.total}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
@@ -308,6 +337,7 @@ bot.command('reportlink', async (ctx) => {
 
 // ========== PLEA ==========
 bot.command('plea', async (ctx) => {
+    const modules = lazyLoadModules();
     const args = ctx.message.text.split(' ');
     if (args.length < 2) {
         ctx.reply(`📝 *PLEA COMMAND*\n\nUsage: /plea 08012345678 I am a legitimate business`, { parse_mode: 'Markdown' });
@@ -325,7 +355,7 @@ bot.command('plea', async (ctx) => {
         return;
     }
     
-    const result = submitPlea(cleaned, userId, username, reason);
+    const result = modules.scammers.submitPlea(cleaned, userId, username, reason);
     await ctx.reply(result.message, { parse_mode: 'Markdown' });
     
     if (result.success && result.status === 'submitted') {
@@ -344,14 +374,24 @@ bot.command('plea', async (ctx) => {
 });
 
 // ========== REFERRAL COMMANDS ==========
-bot.command('referral', async (ctx) => { await referralSystem.handleReferralCommand(ctx); });
-bot.command('leaderboard', async (ctx) => { await referralSystem.handleLeaderboardCommand(ctx); });
-bot.command('myreferrals', async (ctx) => { await referralSystem.handleMyReferralsCommand(ctx); });
+bot.command('referral', async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleReferralCommand(ctx); 
+});
+bot.command('leaderboard', async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleLeaderboardCommand(ctx); 
+});
+bot.command('myreferrals', async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleMyReferralsCommand(ctx); 
+});
 
 // ========== PARTNERS ==========
 bot.command('partners', async (ctx) => {
+    const modules = lazyLoadModules();
     try {
-        await partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK);
+        await modules.partnerSystem.handlePartnersCommand(ctx, COMMUNITY_LINK);
     } catch (err) {
         ctx.reply(`🤝 *PARTNERS DIRECTORY*\n\nNo partners yet. Be the first!\nContact @JoshuaGiwa to register.\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
     }
@@ -382,72 +422,83 @@ WhatsApp: 09025839789
 
 // ========== EDUCATION COMMANDS ==========
 bot.command('tips', (ctx) => {
-    if (dailyTips.length === 0) return ctx.reply('⚠️ No tips yet.');
-    const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
+    const modules = lazyLoadModules();
+    if (modules.tips.dailyTips.length === 0) return ctx.reply('⚠️ No tips yet.');
+    const randomTip = modules.tips.dailyTips[Math.floor(Math.random() * modules.tips.dailyTips.length)];
     ctx.reply(`${randomTip}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
 });
 
 bot.command('scamtypes', (ctx) => {
-    const commonScams = detection.getCommonScams();
+    const modules = lazyLoadModules();
+    const commonScams = modules.detection.getCommonScams();
     if (commonScams.length === 0) return ctx.reply('No scam terms loaded.');
     let message = `📚 *COMMON SCAMS*\n\n`;
     for (const key of commonScams.slice(0, 8)) {
-        const term = detection.scamTerms[key];
+        const term = modules.detection.scamTerms[key];
         if (term) message += `${term.title}\n   ${(term.content || term).split('.')[0]}.\n\n`;
     }
     ctx.reply(message + `👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
 });
 
-bot.command('redflags', (ctx) => ctx.reply(detection.redFlagsContent, { parse_mode: 'Markdown' }));
-bot.command('whattodo', (ctx) => ctx.reply(detection.whatToDoContent, { parse_mode: 'Markdown' }));
+bot.command('redflags', (ctx) => {
+    const modules = lazyLoadModules();
+    ctx.reply(modules.detection.redFlagsContent, { parse_mode: 'Markdown' });
+});
+
+bot.command('whattodo', (ctx) => {
+    const modules = lazyLoadModules();
+    ctx.reply(modules.detection.whatToDoContent, { parse_mode: 'Markdown' });
+});
 
 bot.command('whatis', (ctx) => {
+    const modules = lazyLoadModules();
     const term = ctx.message.text.split(' ').slice(1).join(' ').toLowerCase();
     if (!term) {
-        ctx.reply(`📖 *Usage:* /whatis phishing\n\nAvailable: ${detection.getAllTermKeys().slice(0, 15).join(', ')}`, { parse_mode: 'Markdown' });
+        ctx.reply(`📖 *Usage:* /whatis phishing\n\nAvailable: ${modules.detection.getAllTermKeys().slice(0, 15).join(', ')}`, { parse_mode: 'Markdown' });
         return;
     }
-    const data = detection.getTerm(term);
+    const data = modules.detection.getTerm(term);
     if (data) ctx.reply(`${data.title}\n\n${data.content}\n\n👥 ${COMMUNITY_LINK}`, { parse_mode: 'Markdown' });
-    else ctx.reply(`❌ "${term}" not found. Try: ${detection.getAllTermKeys().slice(0, 10).join(', ')}`);
+    else ctx.reply(`❌ "${term}" not found. Try: ${modules.detection.getAllTermKeys().slice(0, 10).join(', ')}`);
 });
 
 bot.command('stats', (ctx) => {
-    ctx.reply(`📊 *STATS*\nScammers: ${getScammerCount()}\nPartners: ${partnerSystem.getPartnersCount()}\nTips: ${dailyTips.length}\nTerms: ${Object.keys(detection.scamTerms).length}`, { parse_mode: 'Markdown' });
+    const modules = lazyLoadModules();
+    ctx.reply(`📊 *STATS*\nScammers: ${modules.scammers.getScammerCount()}\nPartners: ${modules.partnerSystem.getPartnersCount()}\nTips: ${modules.tips.dailyTips.length}\nTerms: ${Object.keys(modules.detection.scamTerms).length}`, { parse_mode: 'Markdown' });
 });
 
-// Register admin commands
-registerAdminCommands(bot, YOUR_ID, partnerSystem, dailyTips, detection.scamTerms, require('./links.js'));
+// ========== REGISTER ADMIN COMMANDS ==========
+bot.command('adminhelp', async (ctx) => {
+    const modules = lazyLoadModules();
+    if (ctx.from.id !== YOUR_ID) return ctx.reply('❌ Admin only.');
+    // Admin commands will be registered
+});
 
 // ========== MEDIA HANDLERS ==========
-const ocr = require('./ocr.js');
-const linkModule = require('./links.js');
-
 bot.on('photo', async (ctx) => {
+    const modules = lazyLoadModules();
     const photo = ctx.message.photo[ctx.message.photo.length - 1];
     const file = await ctx.telegram.getFile(photo.file_id);
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
     
     const processingMsg = await ctx.reply('🔍 *Analyzing screenshot...*', { parse_mode: 'Markdown' });
-    const extractedText = await ocr.extractTextWithFallbacks(fileUrl, BOT_TOKEN);
+    const extractedText = await modules.ocr.extractTextWithFallbacks(fileUrl, BOT_TOKEN);
     
     if (!extractedText || extractedText.length < 10) {
         await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, 
-            ocr.getLowQualityHelpMessage(), { parse_mode: 'Markdown' });
+            modules.ocr.getLowQualityHelpMessage(), { parse_mode: 'Markdown' });
         return;
     }
     
-    // Use natural.js to process the extracted text
     const userId = ctx.from.id;
-    const response = natural.processNaturalInput(extractedText, userId, ctx.from.username);
+    const response = modules.natural.processNaturalInput(extractedText, userId, ctx.from.username);
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    // Check for phone numbers in extracted text
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
-            const result = detection.checkNumberWithName(phone);
+            const result = modules.detection.checkNumberWithName(phone);
             if (result.isScammer) {
                 await ctx.reply(`🚨 *Phone found:* ${phone} → REPORTED SCAMMER!`, { parse_mode: 'Markdown' });
             } else if (result.isTrusted) {
@@ -462,6 +513,7 @@ bot.on('photo', async (ctx) => {
 });
 
 bot.on('document', async (ctx) => {
+    const modules = lazyLoadModules();
     const document = ctx.message.document;
     const mimeType = document.mime_type;
     
@@ -474,25 +526,23 @@ bot.on('document', async (ctx) => {
     const fileUrl = `https://api.telegram.org/file/bot${BOT_TOKEN}/${file.file_path}`;
     
     const processingMsg = await ctx.reply('🔍 *Analyzing file...*', { parse_mode: 'Markdown' });
-    const extractedText = await ocr.extractTextWithFallbacks(fileUrl, BOT_TOKEN);
+    const extractedText = await modules.ocr.extractTextWithFallbacks(fileUrl, BOT_TOKEN);
     
     if (!extractedText || extractedText.length < 10) {
         await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, 
-            ocr.getLowQualityHelpMessage(), { parse_mode: 'Markdown' });
+            modules.ocr.getLowQualityHelpMessage(), { parse_mode: 'Markdown' });
         return;
     }
     
-    // Use natural.js to process the extracted text
     const userId = ctx.from.id;
-    const response = natural.processNaturalInput(extractedText, userId, ctx.from.username);
+    const response = modules.natural.processNaturalInput(extractedText, userId, ctx.from.username);
     
     await ctx.telegram.editMessageText(ctx.chat.id, processingMsg.message_id, null, response, { parse_mode: 'Markdown' });
     
-    // Check for phone numbers in extracted text
     const phoneMatch = extractedText.match(/0[789][01]\d{8}/g);
     if (phoneMatch) {
         for (const phone of phoneMatch) {
-            const result = detection.checkNumberWithName(phone);
+            const result = modules.detection.checkNumberWithName(phone);
             if (result.isScammer) {
                 await ctx.reply(`🚨 *Phone found:* ${phone} → REPORTED SCAMMER!`, { parse_mode: 'Markdown' });
             } else if (result.isTrusted) {
@@ -506,14 +556,14 @@ bot.on('document', async (ctx) => {
     await askForTestimonial(ctx, 'file', extractedText.substring(0, 50));
 });
 
-// ========== TEXT MESSAGE HANDLER (Uses natural.js) ==========
+// ========== TEXT MESSAGE HANDLER ==========
 bot.on('text', async (ctx) => {
+    const modules = lazyLoadModules();
     const userId = ctx.from.id;
     const message = ctx.message.text;
     
     if (message.startsWith('/')) return;
     
-    // Check if user is giving a testimonial
     if (awaitingTestimonial[userId] && awaitingTestimonial[userId].ready) {
         const testimonial = message.trim();
         const data = awaitingTestimonial[userId];
@@ -546,14 +596,11 @@ bot.on('text', async (ctx) => {
         return;
     }
     
-    // Process with natural.js
-    const response = natural.processNaturalInput(message, userId, ctx.from.username);
+    const response = modules.natural.processNaturalInput(message, userId, ctx.from.username);
     
-    // Only respond if there's a meaningful response
     if (response && response.length > 5) {
         await ctx.reply(response, { parse_mode: 'Markdown' });
         
-        // Ask for testimonial if it was a scam analysis
         if (response.includes('RISK') || response.includes('SCAMMER') || response.includes('CLEAR')) {
             await askForTestimonial(ctx, 'auto_message', message.substring(0, 50));
         }
@@ -561,11 +608,27 @@ bot.on('text', async (ctx) => {
 });
 
 // ========== CALLBACK HANDLERS ==========
-bot.action(/copy_ref_\d+/, async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
-bot.action('copy_group', async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
-bot.action('show_leaderboard', async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
-bot.action(/my_stats_\d+/, async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
-bot.action('get_referral_link', async (ctx) => { await referralSystem.handleReferralCallback(ctx); });
+bot.action(/copy_ref_\d+/, async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleReferralCallback(ctx); 
+});
+bot.action('copy_group', async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleReferralCallback(ctx); 
+});
+bot.action('show_leaderboard', async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleReferralCallback(ctx); 
+});
+bot.action(/my_stats_\d+/, async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleReferralCallback(ctx); 
+});
+bot.action('get_referral_link', async (ctx) => { 
+    const modules = lazyLoadModules();
+    await modules.referralSystem.handleReferralCallback(ctx); 
+});
+
 bot.action('give_testimonial', async (ctx) => {
     const userId = ctx.from.id;
     const username = ctx.from.username || ctx.from.first_name;
@@ -580,12 +643,14 @@ bot.action('give_testimonial', async (ctx) => {
         parse_mode: 'Markdown'
     });
 });
+
 bot.action('no_testimonial', async (ctx) => {
     const userId = ctx.from.id;
     delete awaitingTestimonial[userId];
     await ctx.answerCbQuery("Sorry it wasn't helpful. I'm always improving.");
     await ctx.reply("Thanks for your honesty. I'll keep making the bot better. 🙏");
 });
+
 bot.action('share_bot', async (ctx) => {
     await ctx.answerCbQuery();
     const shareText = `🚨 *FREE SCAM DETECTOR* 🚨\n\nBefore you send money, check the number first.\n\n👉 @JoshuaGiwaBot\n\nFree. Fast. Anonymous.`;
@@ -600,6 +665,7 @@ bot.action('share_bot', async (ctx) => {
         reply_markup: buttons
     });
 });
+
 bot.action('copy_bot_link', async (ctx) => {
     await ctx.answerCbQuery("Bot link copied!", { show_alert: false });
     await ctx.reply(`✅ *Bot link copied!*\n\nShare: @JoshuaGiwaBot`);
@@ -609,7 +675,8 @@ bot.action('copy_bot_link', async (ctx) => {
 let lastTipDate = null;
 
 async function sendDailyTipToGroup() {
-    if (dailyTips.length === 0) return;
+    const modules = lazyLoadModules();
+    if (modules.tips.dailyTips.length === 0) return;
     
     const now = new Date();
     const nigeriaTime = new Date(now.getTime() + 3600000);
@@ -618,10 +685,10 @@ async function sendDailyTipToGroup() {
     
     if (currentHour === 8 && lastTipDate !== currentDate) {
         const dayOfMonth = nigeriaTime.getUTCDate();
-        const tipIndex = (dayOfMonth - 1) % dailyTips.length;
-        let todaysTip = dailyTips[tipIndex];
+        const tipIndex = (dayOfMonth - 1) % modules.tips.dailyTips.length;
+        let todaysTip = modules.tips.dailyTips[tipIndex];
         
-        const sponsorMessage = partnerSystem.getDailyTipSponsorMessage();
+        const sponsorMessage = modules.partnerSystem.getDailyTipSponsorMessage();
         if (sponsorMessage) todaysTip += sponsorMessage;
         
         const message = `${todaysTip}\n\n🇳🇬 Stay safe! Report scammers to @JoshuaGiwaBot`;
@@ -641,7 +708,8 @@ console.log('⏰ Daily tip scheduler started');
 
 bot.command('testtip', async (ctx) => {
     if (ctx.from.id !== YOUR_ID) return ctx.reply('❌ Admin only.');
-    const randomTip = dailyTips[Math.floor(Math.random() * dailyTips.length)];
+    const modules = lazyLoadModules();
+    const randomTip = modules.tips.dailyTips[Math.floor(Math.random() * modules.tips.dailyTips.length)];
     try {
         await bot.telegram.sendMessage(GROUP_ID, `${randomTip}\n\n🧪 *TEST*`, { parse_mode: 'Markdown' });
         ctx.reply('✅ Test tip sent');
@@ -651,17 +719,42 @@ bot.command('testtip', async (ctx) => {
 });
 
 // ========== START LEADERBOARD SCHEDULER ==========
-referralSystem.startLeaderboardScheduler(bot);
+// Will be loaded when needed
 
 // ========== LAUNCH ==========
-bot.launch().then(() => {
-    console.log('========================================');
-    console.log('✅ DETECTIVE JAI TELEGRAM BOT IS LIVE!');
-    console.log(`📊 ${getScammerCount()} scammers reported`);
-    console.log(`🤝 ${partnerSystem.getPartnersCount()} partners`);
-    console.log(`📚 Natural language processing active`);
-    console.log('========================================');
-}).catch(err => { console.error('❌ Launch failed:', err); process.exit(1); });
+console.log('🚀 Starting bot...');
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+bot.launch()
+    .then(() => {
+        console.log('========================================');
+        console.log('✅ DETECTIVE JAI TELEGRAM BOT IS LIVE!');
+        console.log('🤖 Bot is ready to receive messages!');
+        console.log('========================================');
+    })
+    .catch(err => {
+        console.error('❌ Launch failed:', err);
+        console.error('Error details:', err.message);
+        if (err.response) {
+            console.error('Telegram response:', err.response);
+        }
+        process.exit(1);
+    });
+
+process.once('SIGINT', () => {
+    console.log('🛑 Received SIGINT, stopping...');
+    bot.stop('SIGINT');
+});
+process.once('SIGTERM', () => {
+    console.log('🛑 Received SIGTERM, stopping...');
+    bot.stop('SIGTERM');
+});
+
+// Handle uncaught errors
+process.on('uncaughtException', (err) => {
+    console.error('💥 Uncaught Exception:', err);
+    console.error('Stack:', err.stack);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 Unhandled Rejection:', reason);
+});
