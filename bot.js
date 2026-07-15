@@ -16,6 +16,7 @@ app.listen(PORT, () => {
 
 // ========== LAZY LOAD MODULES ==========
 let partnerSystem, referralSystem, detection, natural, admin, scammers, tips, ocr, linkModule;
+let adminCommandsRegistered = false;
 
 function lazyLoadModules() {
     if (!detection) {
@@ -59,15 +60,26 @@ const GROUP_ID = -1003513272328;
 // Store users who want to give testimonial
 let awaitingTestimonial = {};
 
-// ========== ADMIN CONFIGURATION ==========
-// List of admin-only commands
-const ADMIN_COMMANDS = [
-    'listscammers', 'scammers', 'recent', 'download',
-    'addtrusted', 'removetrusted', 'listtrusted',
-    'pleas', 'approveplea', 'rejectplea', 'allpleas',
-    'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats',
-    'userstats', 'userreports', 'testtip', 'adminhelp'
-];
+// ========== ADMIN COMMAND REGISTRATION ==========
+function registerAdminCommandsOnce() {
+    if (adminCommandsRegistered) return;
+    
+    const modules = lazyLoadModules();
+    console.log('👑 Registering admin commands...');
+    
+    // This registers ALL admin commands from admin.js
+    modules.admin.registerAdminCommands(
+        bot, 
+        YOUR_ID, 
+        modules.partnerSystem, 
+        modules.tips.dailyTips, 
+        modules.detection.scamTerms, 
+        modules.linkModule
+    );
+    
+    adminCommandsRegistered = true;
+    console.log('✅ Admin commands registered successfully');
+}
 
 // ========== ADMIN GUARD MIDDLEWARE ==========
 // This runs BEFORE any command to check admin access
@@ -76,9 +88,19 @@ bot.use(async (ctx, next) => {
     if (msg && msg.startsWith('/')) {
         const cmd = msg.split(' ')[0].slice(1).toLowerCase();
         
-        // Check if this is an admin command
-        if (ADMIN_COMMANDS.includes(cmd)) {
-            // Check if the user is the admin
+        // List of admin commands
+        const adminCommands = [
+            'listscammers', 'scammers', 'recent', 'download',
+            'addtrusted', 'removetrusted', 'listtrusted',
+            'pleas', 'approveplea', 'rejectplea', 'allpleas',
+            'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats',
+            'userstats', 'userreports', 'testtip', 'adminhelp',
+            'pending', 'verify', 'reject',
+            'viewtips', 'addtip', 'edittip', 'deletetip'
+        ];
+        
+        if (adminCommands.includes(cmd)) {
+            // Check if user is admin
             if (ctx.from.id !== YOUR_ID) {
                 return ctx.reply(
                     '🚫 *Access Denied*\n\nThis command is restricted to the bot owner.\n\n' +
@@ -87,16 +109,8 @@ bot.use(async (ctx, next) => {
                 );
             }
             
-            // User IS the admin - lazy load and register admin commands
-            const modules = lazyLoadModules();
-            modules.admin.registerAdminCommands(
-                bot, 
-                YOUR_ID, 
-                modules.partnerSystem, 
-                modules.tips.dailyTips, 
-                modules.detection.scamTerms, 
-                modules.linkModule
-            );
+            // Register admin commands if not already registered
+            registerAdminCommandsOnce();
         }
     }
     return next();
@@ -114,7 +128,8 @@ const validCommands = [
     'addtrusted', 'removetrusted', 'listtrusted',
     'pending', 'verify', 'reject', 'userstats', 'userreports',
     'pleas', 'approveplea', 'rejectplea', 'allpleas',
-    'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats'
+    'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats',
+    'viewtips', 'addtip', 'edittip', 'deletetip'
 ];
 
 // ========== CASE-SENSITIVE COMMAND HANDLER ==========
@@ -512,47 +527,16 @@ bot.command('stats', (ctx) => {
 
 // ========== ADMIN HELP COMMAND ==========
 bot.command('adminhelp', async (ctx) => {
-    // Guard is handled by middleware, but double-check
     if (ctx.from.id !== YOUR_ID) {
         return ctx.reply('🚫 *Access Denied*', { parse_mode: 'Markdown' });
     }
     
-    ctx.reply(`
-👑 *ADMIN COMMANDS*
-
-*Scammer Management:*
-/listscammers - List all scammers
-/scammers - Alias for listscammers
-/recent - Show recent reports
-/download - Download scammers database
-
-*Trusted Numbers:*
-/addtrusted [number] [name] - Add trusted number
-/removetrusted [number] - Remove trusted number
-/listtrusted - List all trusted numbers
-
-*Plea Management:*
-/pleas - View pending pleas
-/approveplea [id] - Approve a plea
-/rejectplea [id] [reason] - Reject a plea
-/allpleas - View all pleas
-
-*Link Management:*
-/listlinks - List reported scam links
-/deletelink [id] - Delete a scam link
-/addwhitelist [url] - Add to whitelist
-/removewhitelist [url] - Remove from whitelist
-/linkstats - Link statistics
-
-*User Management:*
-/userstats [id] - View user stats
-/userreports [id] - View user's reports
-
-*Other:*
-/testtip - Send test tip to group
-
-👥 ${COMMUNITY_LINK}
-    `, { parse_mode: 'Markdown' });
+    // Register admin commands first
+    registerAdminCommandsOnce();
+    
+    // Now show help (the admin.js will handle it)
+    // But we need to call the command again since registerAdminCommands registered it
+    // The middleware will handle it
 });
 
 // ========== MEDIA HANDLERS ==========
@@ -812,6 +796,8 @@ bot.launch()
         console.log('🤖 Bot is ready to receive messages!');
         console.log('👑 Admin: @JoshuaGiwa (ID: ' + YOUR_ID + ')');
         console.log('========================================');
+        console.log('💡 Admin commands will register on first use.');
+        console.log('   Type /adminhelp to get started.');
     })
     .catch(err => {
         console.error('❌ Launch failed:', err);
