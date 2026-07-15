@@ -47,21 +47,54 @@ function getCommonScams() {
 // Load terms immediately
 loadTerms();
 
+// ========== NORMALIZE NIGERIAN PHONE NUMBERS ==========
+function normalizePhoneNumber(phoneNumber) {
+    if (!phoneNumber) return null;
+    
+    // Remove all non-digit characters
+    let cleaned = phoneNumber.toString().replace(/\D/g, '');
+    
+    // Remove leading '234' (Nigeria country code) and replace with '0'
+    if (cleaned.startsWith('234')) {
+        cleaned = '0' + cleaned.slice(3);
+    }
+    
+    // Remove leading '2340' or '2341' (some formats)
+    if (cleaned.startsWith('2340') || cleaned.startsWith('2341')) {
+        cleaned = '0' + cleaned.slice(3);
+    }
+    
+    // If it's 10 digits, add leading 0
+    if (cleaned.length === 10 && cleaned.match(/^[789][01]\d{8}$/)) {
+        cleaned = '0' + cleaned;
+    }
+    
+    // Check if it's a valid Nigerian number (11 digits starting with 0[789][01])
+    if (cleaned.length === 11 && cleaned.match(/^0[789][01]\d{8}$/)) {
+        return cleaned;
+    }
+    
+    return null;
+}
+
 // ========== HELPER FUNCTIONS ==========
 function checkNumberInDatabase(phoneNumber) {
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) return false;
+    
     const scammers = getAllScammers();
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    if (cleaned.length === 0) return false;
-    return scammers.some(scammer => {
-        const scammerCleaned = scammer.toString().replace(/\D/g, '');
-        return scammerCleaned === cleaned;
-    });
+    return scammers.includes(cleaned);
 }
 
 // ========== CHECK NUMBER WITH NAME (INCLUDES real.json) ==========
 function checkNumberWithName(phoneNumber) {
-    const cleaned = phoneNumber.toString().replace(/\D/g, '');
-    if (cleaned.length === 0) return { success: false, error: 'Invalid phone number' };
+    const cleaned = normalizePhoneNumber(phoneNumber);
+    if (!cleaned) {
+        return { 
+            success: false, 
+            error: 'Invalid phone number format. Please use a valid Nigerian number like 08012345678 or +2348012345678' 
+        };
+    }
     
     // Check if in scammers.json
     const isScammer = checkNumberInDatabase(cleaned);
@@ -77,6 +110,7 @@ function checkNumberWithName(phoneNumber) {
     return {
         success: true,
         phoneNumber: cleaned,
+        originalInput: phoneNumber,
         isScammer: isScammer,
         isTrusted: isTrusted,
         trustedName: trustedInfo ? trustedInfo.name : null,
@@ -224,20 +258,21 @@ function analyzeMessage(text) {
     }
     
     // ========== CHECK FOR PHONE NUMBERS ==========
-    const phoneMatch = text.match(/0[789][01]\d{8}/);
+    const phoneMatch = text.match(/\+?234[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{4}|0[789][01]\d{8}/);
     if (phoneMatch) {
-        const reported = checkNumberInDatabase(phoneMatch[0]);
-        if (reported) {
-            alerts.push(`🚨 ${phoneMatch[0]} is a REPORTED SCAMMER! DO NOT CALL or SEND MONEY.`);
-            riskScore += 50;
-        } else {
-            // Check if in real.json
-            const trustedInfo = getTrustedNumberInfo(phoneMatch[0]);
-            if (trustedInfo) {
-                alerts.push(`📞 Phone found: ${phoneMatch[0]} (${trustedInfo.name}) → This is a TRUSTED number. Be cautious if misused.`);
+        const rawNumber = phoneMatch[0];
+        const cleaned = normalizePhoneNumber(rawNumber);
+        
+        if (cleaned) {
+            const result = checkNumberWithName(cleaned);
+            if (result.isScammer) {
+                alerts.push(`🚨 ${rawNumber} is a REPORTED SCAMMER! DO NOT CALL or SEND MONEY.`);
+                riskScore += 50;
+            } else if (result.isTrusted) {
+                alerts.push(`📞 Phone found: ${rawNumber} (${result.trustedName}) → This is a TRUSTED number. Be cautious if misused.`);
                 riskScore += 2;
             } else {
-                alerts.push(`📞 Phone number found: ${phoneMatch[0]} → Be cautious if this number contacts you.`);
+                alerts.push(`📞 Phone number found: ${rawNumber} → Be cautious if this number contacts you.`);
                 riskScore += 5;
             }
         }
@@ -390,6 +425,7 @@ module.exports = {
     analyzeMessageWithLinks,
     checkNumberInDatabase,
     checkNumberWithName,
+    normalizePhoneNumber,
     searchRealJson,
     getTerm,
     getAllTermKeys,
