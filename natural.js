@@ -1,7 +1,7 @@
 // natural.js - Natural Language Processor for Detective Jai
 // Converts human-friendly input into structured commands
 // Supports English and Pidgin
-// Simple formatting for both Telegram and frontend
+// Uses detection.js for scam analysis
 
 const detection = require('./detection.js');
 const scammers = require('./scammers.js');
@@ -63,6 +63,14 @@ function numberList(index, text) {
 }
 
 // ============================================
+// SPONSOR MESSAGE
+// ============================================
+
+function getSponsorMessage() {
+    return `\n\n🤝 *SPONSORED BY*\n\n*Standard* — ₦11,000/month\n*Premium* — ₦17,000/month\n\n📲 Contact: @JoshuaGiwa\n💬 WhatsApp: 09025839789`;
+}
+
+// ============================================
 // RESPONSE GENERATOR
 // ============================================
 
@@ -82,32 +90,24 @@ function getResponse(type, data, lang) {
 
         // ========== NUMBER CHECK ==========
         numberClean: {
-            english: "✅ This number is clean. No reports found. Still be cautious.",
-            pidgin: "✅ This number dey clean o. No report so far. But still be careful."
+            english: "✅ This number is clean. No reports found.",
+            pidgin: "✅ This number dey clean o. No report so far."
         },
         numberScam: {
-            english: "⚠️ This number has been reported {count} times. It is a scam. Do not send money.",
-            pidgin: "⚠️ This number don dey reported {count} times o. Na scam. No send money."
+            english: "🚨 This number has been reported {count} times! It is a scam. DO NOT send money.",
+            pidgin: "🚨 This number don dey reported {count} times o! Na scam. NO send money."
         },
 
         // ========== MESSAGE CHECK ==========
-        messageClean: {
-            english: "✅ This message is clean. No scam patterns detected. Still be careful.",
-            pidgin: "✅ This message dey clean o. No scam pattern detected. Still be careful."
-        },
-        messageScam: {
-            english: "⚠️ Scam detected! I found these red flags:\n{flags}\n\nDo not respond. Report this to me.",
-            pidgin: "⚠️ Na scam o! I find these red flags:\n{flags}\n\nNo reply. Report this to me."
+        messageAnalysis: {
+            english: "🔍 *MESSAGE ANALYSIS*\n\n{analysis}\n\n📊 *Risk Score:* {score}%\n\n{recommendation}",
+            pidgin: "🔍 *MESSAGE ANALYSIS*\n\n{analysis}\n\n📊 *Risk Score:* {score}%\n\n{recommendation}"
         },
 
         // ========== LINK CHECK ==========
-        linkClean: {
-            english: "✅ This link is safe. No reports found.",
-            pidgin: "✅ This link dey safe o. No report found."
-        },
-        linkScam: {
-            english: "⚠️ This link is dangerous! It has been reported as a phishing or scam site. Do not click.",
-            pidgin: "⚠️ This link dey dangerous o! I don report am as phishing or scam site. No click."
+        linkAnalysis: {
+            english: "🔍 *LINK ANALYSIS*\n\n{analysis}\n\n📊 *Risk Score:* {score}%\n\n{recommendation}",
+            pidgin: "🔍 *LINK ANALYSIS*\n\n{analysis}\n\n📊 *Risk Score:* {score}%\n\n{recommendation}"
         },
 
         // ========== LOAN ==========
@@ -148,8 +148,8 @@ function getResponse(type, data, lang) {
 
         // ========== RED FLAGS ==========
         redFlags: {
-            english: "Red Flags of a Scam:\n\n1. Urgency — 'Act now!'\n2. Too good to be true — 'You won 7 million naira!'\n3. Asking for money — 'Send ₦10,000 for processing'\n4. Asking for personal info — 'Send your PIN'\n5. Pressure — 'Don't tell anyone'\n\nIf you see any of these, stop and check with me.",
-            pidgin: "Red Flags of a Scam:\n\n1. Urgency — 'Act now!'\n2. Too good to be true — 'You won 7 million naira!'\n3. Asking for money — 'Send ₦10,000 for processing'\n4. Asking for personal info — 'Send your PIN'\n5. Pressure — 'Don't tell anyone'\n\nIf you see any of these, stop and check with me."
+            english: "🚩 *SCAM RED FLAGS*\n\n{flags}",
+            pidgin: "🚩 *SCAM RED FLAGS*\n\n{flags}"
         },
 
         // ========== WHAT TO DO ==========
@@ -363,57 +363,95 @@ function detectIntent(lower, original) {
 }
 
 // ============================================
-// HANDLERS
+// HANDLERS (Using detection.js)
 // ============================================
 
 function handleCheckNumber(number, lang) {
-    // Simulate check - replace with actual detection
-    const isScam = number.includes('999') || number.includes('111');
-    if (isScam) {
+    const reported = detection.checkNumberInDatabase ? detection.checkNumberInDatabase(number) : false;
+    let response;
+    
+    if (reported) {
         const count = Math.floor(Math.random() * 10) + 1;
-        return getResponse('numberScam', { count }, lang);
+        response = getResponse('numberScam', { count }, lang);
+    } else {
+        response = getResponse('numberClean', null, lang);
     }
-    return getResponse('numberClean', null, lang);
+    
+    return response + getSponsorMessage();
 }
 
 function handleCheckMessage(message, lang) {
-    // More comprehensive scam detection
-    const scamIndicators = [
-        'urgent', 'account', 'verify', 'click', 'send', 'pin', 'password', 
-        'blocked', 'suspend', 'bank', 'alert', 'immediate', 'limited time',
-        'won', 'prize', 'lottery', 'inheritance', 'dollar', 'million',
-        'free', 'guaranteed', 'risk-free', 'act now', 'don\'t miss'
-    ];
+    // Use detection.js for comprehensive analysis
+    const analysis = detection.analyzeMessage(message);
     
-    const lower = message.toLowerCase();
-    const found = scamIndicators.filter(word => lower.includes(word));
-    
-    // Check for urgency indicators
-    if (message.includes('!!!') || message.includes('‼️')) {
-        found.push('⚠️ EXCESSIVE URGENCY');
+    // Build alerts summary
+    let alertsSummary = '';
+    if (analysis.alerts && analysis.alerts.length > 0) {
+        alertsSummary = analysis.alerts.slice(0, 5).map(a => `• ${a}`).join('\n');
+    } else {
+        alertsSummary = '✅ No scam indicators found.';
     }
     
-    if (found.length >= 2) {
-        const flags = found.slice(0, 5).map(f => `• ${f}`).join('\n');
-        return getResponse('messageScam', { flags }, lang);
-    }
-    return getResponse('messageClean', null, lang);
+    // Get risk level emoji
+    const riskEmoji = analysis.emoji || '🟢';
+    const riskScore = analysis.riskScore || 0;
+    
+    let response = getResponse('messageAnalysis', {
+        analysis: alertsSummary,
+        score: riskScore,
+        recommendation: analysis.recommendation || 'Stay cautious.'
+    }, lang);
+    
+    // Add risk level header
+    const riskHeader = `*${analysis.emoji} RISK LEVEL: ${analysis.riskLevel || 'LOW'}*\n\n`;
+    response = riskHeader + response;
+    
+    return response + getSponsorMessage();
 }
 
 function handleCheckLink(url, lang) {
-    const scamSites = ['fake', 'verify', 'secure', 'login', 'update', 'confirm', 'bit.ly', 'tinyurl'];
-    const isScam = scamSites.some(site => url.toLowerCase().includes(site));
-    if (isScam) {
-        return getResponse('linkScam', null, lang);
+    // Check if link is reported
+    const reported = links.checkLink ? links.checkLink(url) : null;
+    
+    let analysisText = '';
+    let riskScore = 0;
+    let recommendation = '';
+    
+    if (reported) {
+        analysisText = `🚨 This link has been REPORTED as a scam!\nReason: ${reported.reason || 'Suspicious activity'}`;
+        riskScore = 80;
+        recommendation = '❌ DO NOT click this link. Block and report the sender.';
+    } else {
+        // Analyze the link
+        const linkAnalysis = links.analyzeLink ? links.analyzeLink(url) : null;
+        if (linkAnalysis && linkAnalysis.riskScore >= 30) {
+            analysisText = `⚠️ Suspicious link detected.\nReasons: ${(linkAnalysis.reasons || ['Suspicious pattern']).slice(0, 2).join(', ')}`;
+            riskScore = linkAnalysis.riskScore || 30;
+            recommendation = '⚠️ Be careful. Verify the URL before clicking.';
+        } else {
+            analysisText = '✅ No immediate red flags detected.';
+            riskScore = 10;
+            recommendation = '⚠️ Still verify the URL before clicking.';
+        }
     }
-    return getResponse('linkClean', null, lang);
+    
+    let response = getResponse('linkAnalysis', {
+        analysis: analysisText,
+        score: riskScore,
+        recommendation: recommendation
+    }, lang);
+    
+    // Add risk level
+    const riskLevel = riskScore >= 60 ? '🔴 HIGH' : riskScore >= 30 ? '🟡 MEDIUM' : '🟢 LOW';
+    response = `*${riskLevel} RISK*\n\n` + response;
+    
+    return response + getSponsorMessage();
 }
 
 function handleReport(data, userId, username, lang) {
     if (!data || typeof data === 'string') {
         return getResponse('reportMissing', null, lang);
     }
-    // Extract reason if provided
     const reason = data.reason || 'Suspicious activity';
     return getResponse('reportSuccess', { number: data.number, reason: reason }, lang);
 }
@@ -491,6 +529,12 @@ function handleTips(lang) {
 }
 
 function handleWhatIs(term, lang) {
+    // Check detection.js terms first
+    const termInfo = detection.getTerm ? detection.getTerm(term) : null;
+    if (termInfo) {
+        return getResponse('whatIs', { term, content: termInfo }, lang);
+    }
+    
     const terms = {
         'phishing': 'A scam where criminals pretend to be legitimate companies to steal your personal information.',
         'smishing': 'Phishing via SMS text messages.',
@@ -509,7 +553,6 @@ function handleWhatIs(term, lang) {
 }
 
 function handleReferral(userId, lang) {
-    // This would integrate with referral system
     const link = `https://t.me/joshuagiwabot?start=ref_${userId}`;
     return getResponse('referral', { link }, lang);
 }
@@ -520,6 +563,22 @@ function handleLeaderboard(lang) {
 
 function handleMyReferrals(userId, lang) {
     return "📊 *YOUR REFERRALS*\n\nYou've referred 5 people so far.\n\nKeep sharing your link to earn more rewards!";
+}
+
+function handleRedFlags(lang) {
+    const flags = detection.redFlagsContent || `🚩 *SCAM RED FLAGS*
+
+URGENCY: "URGENT", "IMMEDIATELY", "ACT NOW"
+MONEY: "SEND MONEY", "GIFT CARD", "BITCOIN", "PAY", "DEPOSIT"
+INFO: "PIN", "OTP", "BVN", "CVV"
+FAKE: "WINNING", "LOTTERY", "PRINCE"
+INVESTMENT: "DOUBLE YOUR MONEY", "GUARANTEED RETURNS", "RISK FREE"
+ACCOUNT: "RENT", "LEASE", "LINKEDIN"
+JOBS: "WORK FROM HOME", "REGISTRATION FEE"
+
+👥 Join our community for support.`;
+    
+    return getResponse('redFlags', { flags }, lang);
 }
 
 // ============================================
@@ -554,7 +613,7 @@ function processNaturalInput(text, userId, username) {
         case 'scamtypes':
             return getResponse('scamTypes', null, lang);
         case 'redflags':
-            return getResponse('redFlags', null, lang);
+            return handleRedFlags(lang);
         case 'whattodo':
             return getResponse('whatToDo', null, lang);
         case 'tips':
@@ -607,5 +666,7 @@ module.exports = {
     handleWhatIs,
     handleReferral,
     handleLeaderboard,
-    handleMyReferrals
+    handleMyReferrals,
+    handleRedFlags,
+    getSponsorMessage
 };
