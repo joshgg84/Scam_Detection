@@ -1,55 +1,19 @@
-// natural.js - Natural Language Processor for Detective Jai
+
 // Converts natural language to commands and uses detection.js
-// LAZY LOADING VERSION - Modules load only when needed
+
+const detection = require('./detection.js');
+const linkModule = require('./links.js');
+const referralSystem = require('./referrals.js');
+const partnerSystem = require('./partner.js');
+const { getScammerCount, getAllScammers, reportNumber, isScammer } = require('./scammers.js');
+const fs = require('fs');
+const path = require('path');
+
+// Import normalizePhoneNumber from detection.js
+const { normalizePhoneNumber } = require('./detection.js');
 
 // ============================================
-// LIGHTWEIGHT IMPORTS (always loaded)
-// ============================================
-
-const path = require('path'); // Lightweight, keep
-
-// ============================================
-// LAZY LOADING SYSTEM
-// ============================================
-
-let detection = null;
-let linkModule = null;
-let referralSystem = null;
-let partnerSystem = null;
-let fs = null;
-let scammers = null;
-let normalizePhoneNumberFn = null;
-
-function lazyLoadModules() {
-    if (!detection) {
-        console.log('⏳ Lazy loading heavy modules...');
-        const startTime = Date.now();
-        
-        detection = require('./detection.js');
-        linkModule = require('./links.js');
-        referralSystem = require('./referrals.js');
-        partnerSystem = require('./partner.js');
-        fs = require('fs');
-        scammers = require('./scammers.js');
-        
-        // Store normalizePhoneNumber function reference
-        normalizePhoneNumberFn = detection.normalizePhoneNumber || function(num) { return num; };
-        
-        console.log(`✅ Modules loaded in ${Date.now() - startTime}ms`);
-    }
-    return { 
-        detection, 
-        linkModule, 
-        referralSystem, 
-        partnerSystem, 
-        fs, 
-        scammers,
-        normalizePhoneNumber: normalizePhoneNumberFn 
-    };
-}
-
-// ============================================
-// LANGUAGE DETECTION (Lightweight)
+// LANGUAGE DETECTION
 // ============================================
 
 function detectLanguage(text) {
@@ -75,16 +39,15 @@ function detectLanguage(text) {
 }
 
 // ============================================
-// LOAD PARTNERS FROM partners.json (Lazy)
+// LOAD PARTNERS FROM partners.json
 // ============================================
 
 const PARTNERS_FILE = path.join(__dirname, 'partners.json');
 
 function loadPartners() {
-    const modules = lazyLoadModules();
     try {
-        if (modules.fs.existsSync(PARTNERS_FILE)) {
-            const data = modules.fs.readFileSync(PARTNERS_FILE, 'utf8');
+        if (fs.existsSync(PARTNERS_FILE)) {
+            const data = fs.readFileSync(PARTNERS_FILE, 'utf8');
             const parsed = JSON.parse(data);
             return parsed.partners || [];
         }
@@ -134,17 +97,16 @@ function getSponsorMessage() {
 }
 
 // ============================================
-// DETECTION HANDLERS (Lazy Load)
+// DETECTION HANDLERS (uses detection.js)
 // ============================================
 
 function handleCheckNumber(phoneNumber) {
-    const modules = lazyLoadModules();
-    
+    // phoneNumber should already be normalized
     if (!phoneNumber) {
         return `📞 *Check Phone Number*\n\nType a valid Nigerian phone number like 08012345678 or +234 703 193 9715.`;
     }
     
-    const result = modules.detection.checkNumberWithName(phoneNumber);
+    const result = detection.checkNumberWithName(phoneNumber);
     if (!result.success) {
         return `📞 *Check Phone Number*\n\n${result.error}`;
     }
@@ -158,42 +120,40 @@ function handleCheckNumber(phoneNumber) {
         response = `✅ *CLEAR*\n${result.phoneNumber} has no reports.\n\n⚠️ Still be cautious.`;
     }
     
-    const supportMessage = modules.partnerSystem.getRandomPartnerSupportMessage();
+    // Add partner support message
+    const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
     response += `\n\n${supportMessage}`;
     
     return response;
 }
 
 function handleCheckMessage(messageText) {
-    const modules = lazyLoadModules();
-    
     if (!messageText || messageText.length < 3) {
         return `📝 *Check Message*\n\nSend me a suspicious message to analyze.\n\nExample: "URGENT: Your account will be closed"`;
     }
     
-    const analysis = modules.detection.analyzeMessage(messageText);
+    const analysis = detection.analyzeMessage(messageText);
     let response = `${analysis.emoji} *${analysis.riskLevel} RISK* (Score: ${analysis.riskScore})\n\n`;
     response += `*📝 Message:*\n${messageText.substring(0, 300)}${messageText.length > 300 ? '...' : ''}\n\n`;
     
-    if (analysis.alerts && analysis.alerts.length > 0) {
+    if (analysis.alerts.length > 0) {
         response += `*🔍 WHY THIS IS SUSPICIOUS:*\n${analysis.alerts.slice(0, 5).join('\n')}\n\n`;
     }
     
     response += `*✅ WHAT YOU SHOULD DO:*\n${analysis.recommendation}\n\n`;
     
-    const supportMessage = modules.partnerSystem.getRandomPartnerSupportMessage();
+    // Add partner support message
+    const supportMessage = partnerSystem.getRandomPartnerSupportMessage();
     response += `${supportMessage}`;
     
     return response;
 }
 
 function handleCheckLink(url) {
-    const modules = lazyLoadModules();
-    
     if (!url) return `🔗 *Check Link*\n\nSend me a link to check.\n\nExample: https://suspicious-site.com`;
     
-    const reported = modules.linkModule.checkLink(url);
-    const analysis = modules.linkModule.analyzeLink(url);
+    const reported = linkModule.checkLink(url);
+    const analysis = linkModule.analyzeLink(url);
     
     if (reported) {
         return `🚨 *SCAM LINK DETECTED!*\n\nURL: ${url}\nReason: ${reported.reason}\n❌ DO NOT CLICK!`;
@@ -205,29 +165,30 @@ function handleCheckLink(url) {
 }
 
 function handleReport(phoneNumber, userId, username) {
-    const modules = lazyLoadModules();
-    
+    // phoneNumber should already be normalized
     if (!phoneNumber) {
         return `📢 *Report Scammer*\n\nType the phone number to report.\n\nExample: "report 08012345678 fake loan scam"`;
     }
     
     const reason = 'Reported via natural language';
-    const result = modules.scammers.reportNumber(phoneNumber, userId || 'web_user', reason);
+    const result = reportNumber(phoneNumber, userId || 'web_user', reason);
     
     return result.message;
 }
 
 function handlePlea(phoneNumber, userId, username) {
-    const modules = lazyLoadModules();
-    
+    // phoneNumber should already be normalized
     if (!phoneNumber) {
         return `📝 *Plea Command*\n\nIf your number was wrongly flagged as a scammer, send me the number.\n\nExample: "plea 08012345678 I am a legitimate business"`;
     }
     
-    if (!modules.scammers.isScammer(phoneNumber)) {
+    // Check if number is actually a scammer
+    if (!isScammer(phoneNumber)) {
         return `✅ ${phoneNumber} is not in the scammers database. No plea needed.`;
     }
     
+    // This would call the actual plea function from scammers.js
+    // For now, return a message
     return `📋 *Plea Submitted*\n\nYour plea for ${phoneNumber} has been submitted. Admin will review it.\n\nYou will be notified when a decision is made.`;
 }
 
@@ -244,8 +205,7 @@ function handleHelp() {
 }
 
 function handleStats() {
-    const modules = lazyLoadModules();
-    const count = modules.scammers.getScammerCount();
+    const count = getScammerCount();
     return `📊 *STATS*\n\n🔍 Scammers reported: ${count}\n🆓 Free forever\n🇳🇬 Protecting Nigerians`;
 }
 
@@ -281,17 +241,13 @@ function handleWhatIs(term) {
         return `📖 *What Is*\n\nType "what is phishing" or "what is 419" to learn about scams.`;
     }
     
+    // Simplified term lookup
     const terms = {
         'phishing': '🎣 *Phishing*\n\nFake messages pretending to be from banks or companies to steal your login details. Never click suspicious links.',
         '419': '📜 *419 Scam*\n\nAlso called "Nigerian Prince" scam. Someone promises you millions if you pay a small fee first. It\'s always a scam.',
         'romance scam': '💔 *Romance Scam*\n\nSomeone pretends to love you, builds trust, then asks for money. They never meet you in person.',
         'fake alert': '🏦 *Fake Alert*\n\nA fake bank credit alert SMS. Always check your bank app balance, not just SMS.',
-        'sim swap': '📱 *SIM Swap Scam*\n\nScammer convinces your network provider to transfer your number to their SIM card to access your bank accounts.',
-        'loan scam': '💰 *Loan Scam*\n\nFake lenders who ask for upfront fees. Real loans deduct fees from the amount you receive.',
-        'employment scam': '💼 *Employment Scam*\n\nFake job offers that ask for registration fees. Real jobs pay you, not the other way around.',
-        'investment scam': '📈 *Investment Scam*\n\nPromises of unrealistically high returns. If it sounds too good to be true, it is.',
-        'property scam': '🏠 *Property Scam*\n\nFake property listings asking for deposit before viewing. Never pay without seeing the property first.',
-        'gift card scam': '🎁 *Gift Card Scam*\n\nScammers asking for gift cards as payment. This is always a scam.'
+        'sim swap': '📱 *SIM Swap Scam*\n\nScammer convinces your network provider to transfer your number to their SIM card to access your bank accounts.'
     };
     
     const lowerTerm = term.toLowerCase();
@@ -301,7 +257,7 @@ function handleWhatIs(term) {
         }
     }
     
-    return `❌ *"${term}" not found.*\n\nTry: phishing, 419, romance scam, fake alert, sim swap, loan scam, employment scam, investment scam, property scam, gift card scam`;
+    return `❌ *"${term}" not found.*\n\nTry: phishing, 419, romance scam, fake alert, sim swap`;
 }
 
 function handlePartners() {
@@ -324,14 +280,11 @@ function handlePartnerProgram() {
 }
 
 function handleReferral(userId) {
-    const modules = lazyLoadModules();
     const referralLink = `https://t.me/JoshuaGiwaBot?start=ref_${userId}`;
     return `🤝 *YOUR REFERRAL LINK*\n\nShare this link with friends:\n\`${referralLink}\`\n\nWhen they join, you get credit!\n\n🏆 Top inviters get recognized.`;
 }
 
 function handleLeaderboard() {
-    const modules = lazyLoadModules();
-    // This will call the actual leaderboard function
     return `🏆 *LEADERBOARD*\n\nNo one has invited anyone yet. Be the first!\n\nShare your referral link to climb the leaderboard.`;
 }
 
@@ -366,10 +319,7 @@ function processNaturalInput(text, userId, username) {
     const numberMatch = text.match(/(\+234[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{4}|0[789][01]\d{8})/);
     if (numberMatch) {
         const rawNumber = numberMatch[0];
-        // Use lazy loaded normalize function
-        const modules = lazyLoadModules();
-        const normalizeFn = modules.detection.normalizePhoneNumber || function(num) { return num.replace(/\D/g, ''); };
-        const cleaned = normalizeFn(rawNumber);
+        const cleaned = normalizePhoneNumber(rawNumber);
         if (cleaned) {
             if (lower.includes('report') || lower.includes('i want to report')) {
                 return handleReport(cleaned, userId, username);
@@ -395,6 +345,7 @@ function processNaturalInput(text, userId, username) {
         lower.includes('analyze message') ||
         lower.includes('check this text') ||
         lower.includes('check text')) {
+        // Extract the message after the prefix
         let messageText = text;
         const prefixes = ['check this message:', 'check message:', 'checkmsg', 'analyze this message:', 'check this text:', 'check text:'];
         for (const prefix of prefixes) {
@@ -404,13 +355,6 @@ function processNaturalInput(text, userId, username) {
                     messageText = text.substring(text.toLowerCase().indexOf(prefix) + prefix.length).trim();
                     break;
                 }
-            }
-        }
-        if (messageText === text) {
-            // If no prefix found, try to extract after "check"
-            const checkIndex = lower.indexOf('check');
-            if (checkIndex !== -1) {
-                messageText = text.substring(checkIndex + 5).trim();
             }
         }
         return handleCheckMessage(messageText);
@@ -428,58 +372,50 @@ function processNaturalInput(text, userId, username) {
 
     // Help
     if (lower.includes('what can you do') || lower.includes('help me') || 
-        lower.includes('help') || lower.includes('what do you do') ||
-        lower.includes('how to use')) {
+        lower.includes('help') || lower.includes('what do you do')) {
         return handleHelp();
     }
 
     // Stats
     if (lower.includes('how many scammers') || lower.includes('caught') || 
-        lower.includes('statistics') || lower.includes('stats') ||
-        lower.includes('total scammers')) {
+        lower.includes('statistics') || lower.includes('stats')) {
         return handleStats();
     }
 
     // Scam types
     if (lower.includes('common scams') || lower.includes('what are scams') || 
-        lower.includes('scam types') || lower.includes('types of scams') ||
-        lower.includes('list scams')) {
+        lower.includes('scam types') || lower.includes('types of scams')) {
         return handleScamTypes();
     }
 
     // Red flags
-    if (lower.includes('red flag') || lower.includes('red flags') ||
-        lower.includes('warning signs')) {
+    if (lower.includes('red flag') || lower.includes('red flags')) {
         return handleRedFlags();
     }
 
     // What to do after scam
     if (lower.includes('been scammed') || lower.includes('i was scammed') || 
-        lower.includes('what to do') || lower.includes('got scammed') ||
-        lower.includes('i got scammed')) {
+        lower.includes('what to do') || lower.includes('got scammed')) {
         return handleWhatToDo();
     }
 
     // Tips
     if (lower.includes('tip') || lower.includes('security tip') || 
-        lower.includes('advice') || lower.includes('safe') ||
-        lower.includes('give me a tip')) {
+        lower.includes('advice') || lower.includes('safe')) {
         return handleTips();
     }
 
     // What is
     if (lower.includes('what is') || lower.includes('what does') || 
-        lower.includes('meaning of') || lower.includes('define') ||
-        lower.includes('what are')) {
-        const term = text.replace(/what is|what does|meaning of|define|what are/i, '').trim();
+        lower.includes('meaning of') || lower.includes('define')) {
+        const term = text.replace(/what is|what does|meaning of|define/i, '').trim();
         return handleWhatIs(term);
     }
 
     // Partners
     if (lower.includes('partner') || lower.includes('partners')) {
         if (lower.includes('how to become') || lower.includes('how can i') || 
-            lower.includes('become a partner') || lower.includes('partner program') ||
-            lower.includes('advertise')) {
+            lower.includes('become a partner') || lower.includes('partner program')) {
             return handlePartnerProgram();
         }
         return handlePartners();
@@ -487,30 +423,29 @@ function processNaturalInput(text, userId, username) {
 
     // Referral
     if (lower.includes('referral') || lower.includes('refer') || 
-        lower.includes('invite') || lower.includes('link') ||
-        lower.includes('my referral')) {
+        lower.includes('invite') || lower.includes('link')) {
         return handleReferral(userId);
     }
 
     // Leaderboard
     if (lower.includes('leaderboard') || lower.includes('leading') || 
-        lower.includes('top referrer') || lower.includes('ranking')) {
+        lower.includes('top referrer')) {
         return handleLeaderboard();
     }
 
     // My referrals
     if (lower.includes('my referrals') || lower.includes('how many people') || 
-        lower.includes('my invites') || lower.includes('my refer')) {
+        lower.includes('my invites')) {
         return handleMyReferrals(userId);
     }
 
     // Greeting
-    if (lower.match(/^(hi|hello|hey|good morning|good afternoon|good evening|how are you|sup|what's up|yo|alright)/)) {
+    if (lower.match(/^(hi|hello|hey|good morning|good afternoon|good evening|how are you|sup|what's up)/)) {
         return handleWelcome();
     }
 
-    // Default - check if it's a message to analyze (only if long enough)
-    if (text.length > 10 && !lower.includes('/')) {
+    // Default - check if it's a message to analyze
+    if (text.length > 10) {
         return handleCheckMessage(text);
     }
 
@@ -522,6 +457,7 @@ function processNaturalInput(text, userId, username) {
 // ============================================
 
 function getPidginResponse(englishResponse) {
+    // Simple pidgin translation for common responses
     const translations = {
         '🚨 *ALERT!*': '🚨 *WAHALA!*',
         '⚠️ *CLEAR*': '⚠️ *KLEAR*',
@@ -532,15 +468,12 @@ function getPidginResponse(englishResponse) {
         'Still be cautious': 'Still dey careful',
         'Thank you for your testimonial': 'Thank you for your testimony',
         'God bless you': 'God bless you',
-        'Help Others Stay Safe': 'Help others stay safe',
-        'TRUSTED NUMBER': 'TRUSTED NUMBER',
-        'SUSPICIOUS': 'SUSPICIOUS',
-        'RISK': 'RISK'
+        'Help Others Stay Safe': 'Help others stay safe'
     };
     
     let pidgin = englishResponse;
     for (const [english, pidginText] of Object.entries(translations)) {
-        pidgin = pidgin.replace(new RegExp(english, 'g'), pidginText);
+        pidgin = pidgin.replace(english, pidginText);
     }
     return pidgin;
 }
@@ -575,7 +508,5 @@ module.exports = {
     handleLeaderboard,
     handleMyReferrals,
     handleWelcome,
-    handleDefault,
-    // Export lazy load function for debugging
-    lazyLoadModules
+    handleDefault
 };
