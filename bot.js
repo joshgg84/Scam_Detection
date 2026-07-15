@@ -1,10 +1,10 @@
-// bot.js - Telegram Bot with LAZY LOADING + Health Check + Admin Guard
-// Detective Jai - Nigeria Scam Detector Bot
+// bot.js - Fixed Admin Commands
+// Replace your entire bot.js with this:
 
 const { Telegraf } = require('telegraf');
 const express = require('express');
 
-// ========== HEALTH CHECK (Required for Render) ==========
+// ========== HEALTH CHECK ==========
 const app = express();
 app.get('/health', (req, res) => {
     res.status(200).send('OK');
@@ -33,7 +33,6 @@ function lazyLoadModules() {
         ocr = require('./ocr.js');
         linkModule = require('./links.js');
         
-        // Initialize systems
         partnerSystem.initPartnerSystem();
         
         console.log(`✅ Modules loaded in ${Date.now() - start}ms`);
@@ -46,18 +45,15 @@ const BOT_TOKEN = process.env.BOT_TOKEN;
 
 if (!BOT_TOKEN) {
     console.error('❌ BOT_TOKEN not found!');
-    console.error('💡 Add BOT_TOKEN to your Render environment variables');
     process.exit(1);
 }
 
 console.log('✅ BOT_TOKEN loaded (length:', BOT_TOKEN.length, ')');
 
 const bot = new Telegraf(BOT_TOKEN);
-const YOUR_ID = 8447414897; // Your personal Telegram ID
+const YOUR_ID = 8447414897;
 const COMMUNITY_LINK = "https://t.me/+8JUqlJ-4SBdlZTM0";
 const GROUP_ID = -1003513272328;
-
-// Store users who want to give testimonial
 let awaitingTestimonial = {};
 
 // ========== ADMIN COMMAND REGISTRATION ==========
@@ -67,7 +63,6 @@ function registerAdminCommandsOnce() {
     const modules = lazyLoadModules();
     console.log('👑 Registering admin commands...');
     
-    // This registers ALL admin commands from admin.js
     modules.admin.registerAdminCommands(
         bot, 
         YOUR_ID, 
@@ -78,25 +73,24 @@ function registerAdminCommandsOnce() {
     );
     
     adminCommandsRegistered = true;
-    console.log('✅ Admin commands registered successfully');
+    console.log('✅ Admin commands registered');
 }
 
-// ========== ADMIN GUARD MIDDLEWARE ==========
-// This runs BEFORE any command to check admin access
+// ========== ADMIN COMMAND HANDLER ==========
+// This handles ALL admin commands including adminhelp
 bot.use(async (ctx, next) => {
     const msg = ctx.message?.text;
     if (msg && msg.startsWith('/')) {
         const cmd = msg.split(' ')[0].slice(1).toLowerCase();
         
-        // List of admin commands
+        // List of ALL admin commands
         const adminCommands = [
-            'listscammers', 'scammers', 'recent', 'download',
+            'adminhelp', 'listscammers', 'scammers', 'recent', 'download',
             'addtrusted', 'removetrusted', 'listtrusted',
+            'pending', 'verify', 'reject', 'userstats', 'userreports',
             'pleas', 'approveplea', 'rejectplea', 'allpleas',
             'listlinks', 'deletelink', 'addwhitelist', 'removewhitelist', 'linkstats',
-            'userstats', 'userreports', 'testtip', 'adminhelp',
-            'pending', 'verify', 'reject',
-            'viewtips', 'addtip', 'edittip', 'deletetip'
+            'viewtips', 'addtip', 'edittip', 'deletetip', 'testtip'
         ];
         
         if (adminCommands.includes(cmd)) {
@@ -111,9 +105,39 @@ bot.use(async (ctx, next) => {
             
             // Register admin commands if not already registered
             registerAdminCommandsOnce();
+            
+            // For adminhelp, we need to let the command handler run
+            if (cmd === 'adminhelp') {
+                return next();
+            }
         }
     }
     return next();
+});
+
+// ========== ADMIN HELP COMMAND ==========
+// This is the handler for /adminhelp
+bot.command('adminhelp', async (ctx) => {
+    // Double-check admin status
+    if (ctx.from.id !== YOUR_ID) {
+        return ctx.reply('🚫 *Access Denied*', { parse_mode: 'Markdown' });
+    }
+    
+    // Make sure admin commands are registered
+    registerAdminCommandsOnce();
+    
+    // Now get the modules and show help
+    const modules = lazyLoadModules();
+    
+    // Use the admin module's help message
+    const helpMessage = modules.admin.getAdminHelpMessage(
+        modules.partnerSystem, 
+        modules.tips.dailyTips, 
+        modules.detection.scamTerms, 
+        modules.linkModule
+    );
+    
+    ctx.reply(helpMessage, { parse_mode: 'Markdown' });
 });
 
 // ========== VALID COMMANDS ==========
@@ -525,20 +549,6 @@ bot.command('stats', (ctx) => {
     ctx.reply(`📊 *STATS*\nScammers: ${modules.scammers.getScammerCount()}\nPartners: ${modules.partnerSystem.getPartnersCount()}\nTips: ${modules.tips.dailyTips.length}\nTerms: ${Object.keys(modules.detection.scamTerms).length}`, { parse_mode: 'Markdown' });
 });
 
-// ========== ADMIN HELP COMMAND ==========
-bot.command('adminhelp', async (ctx) => {
-    if (ctx.from.id !== YOUR_ID) {
-        return ctx.reply('🚫 *Access Denied*', { parse_mode: 'Markdown' });
-    }
-    
-    // Register admin commands first
-    registerAdminCommandsOnce();
-    
-    // Now show help (the admin.js will handle it)
-    // But we need to call the command again since registerAdminCommands registered it
-    // The middleware will handle it
-});
-
 // ========== MEDIA HANDLERS ==========
 bot.on('photo', async (ctx) => {
     const modules = lazyLoadModules();
@@ -783,9 +793,6 @@ bot.command('testtip', async (ctx) => {
     }
 });
 
-// ========== START LEADERBOARD SCHEDULER ==========
-// Will be loaded when needed
-
 // ========== LAUNCH ==========
 console.log('🚀 Starting bot...');
 
@@ -796,15 +803,10 @@ bot.launch()
         console.log('🤖 Bot is ready to receive messages!');
         console.log('👑 Admin: @JoshuaGiwa (ID: ' + YOUR_ID + ')');
         console.log('========================================');
-        console.log('💡 Admin commands will register on first use.');
-        console.log('   Type /adminhelp to get started.');
+        console.log('💡 Type /adminhelp to see admin commands');
     })
     .catch(err => {
         console.error('❌ Launch failed:', err);
-        console.error('Error details:', err.message);
-        if (err.response) {
-            console.error('Telegram response:', err.response);
-        }
         process.exit(1);
     });
 
@@ -817,12 +819,10 @@ process.once('SIGTERM', () => {
     bot.stop('SIGTERM');
 });
 
-// Handle uncaught errors
 process.on('uncaughtException', (err) => {
     console.error('💥 Uncaught Exception:', err);
-    console.error('Stack:', err.stack);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
     console.error('💥 Unhandled Rejection:', reason);
 });
